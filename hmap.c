@@ -46,11 +46,11 @@
 #define ALIGN_DOWN_PTR(p, a) ((void *)ALIGN_DOWN((uintptr_t)(p), (a)))
 #define ALIGN_UP_PTR(p, a) ((void *)ALIGN_UP((uintptr_t)(p), (a)))
 
-typedef signed char        s8; // signed 8-bit
+typedef signed char        s8; 
 typedef short              s16;
 typedef int                s32;
 typedef long long          s64;
-typedef unsigned char      u8; // unsigned 8-bit
+typedef unsigned char      u8; 
 typedef unsigned short     u16;
 typedef unsigned int       u32;
 typedef unsigned long long u64;
@@ -77,11 +77,11 @@ void hmap_set_error_handler(void (*handler)(char* err_msg)) {
 // /////////////////////////////////////////////
 
 typedef struct {
-    void *(*allocate)(size_t size);  // Allocate virtual memory (reserve & full commit)
-    void *(*reserve)(size_t size);   // Reserve virtual memory
-    bool (*commit)(void *addr, size_t total_size, size_t additional_bytes);    // Commit memory pages
-    bool (*decommit)(void *addr, size_t size);  // Decommit memory pages
-    bool (*release)(void *addr, size_t size);  // Release reserved memory
+    void *(*allocate)(size_t size);  
+    void *(*reserve)(size_t size);   
+    bool (*commit)(void *addr, size_t total_size, size_t additional_bytes);    
+    bool (*decommit)(void *addr, size_t size);  
+    bool (*release)(void *addr, size_t size);  
     size_t page_size;               // System page size
 } V_Allocator;
 
@@ -326,11 +326,11 @@ void *darr__grow(void *arr, size_t elem_size) {
     DarrHdr *dh = darr__hdr(arr);
     DarrHdr *new = NULL;
     AllocInfo alloc_info = dh->alloc_info;
-    size_t old_capacity = darr_cap(arr);
+    size_t old_cap = darr_cap(arr);
     switch (dh->alloc_type) 
     {
         case ALLOC_VIRTUAL: {
-            size_t additional_bytes = old_capacity * elem_size; // double the capacity --- todo properly
+            size_t additional_bytes = (size_t)((float)old_cap * (DARR_GROWTH_MULTIPLIER - 1.0f) * elem_size);
             if(!v_alloc_committ(&alloc_info, additional_bytes)) {
                 hmap_error_handler("Allocation failed");
             }
@@ -338,7 +338,7 @@ void *darr__grow(void *arr, size_t elem_size) {
             break;
         }
         case ALLOC_MALLOC: {
-            size_t new_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_capacity * (float)elem_size * DARR_GROWTH_MULTIPLIER); // double capacity
+            size_t new_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER); // double capacity
             new = realloc(dh, new_size_in_bytes);
             if(!new) {
                 hmap_error_handler("Out of memory");
@@ -347,7 +347,7 @@ void *darr__grow(void *arr, size_t elem_size) {
         }
     }
     new->alloc_info = alloc_info;
-    new->cap += old_capacity;
+    new->cap += old_cap;
     assert(((size_t)&new->data & (DATA_ALIGNMENT - 1)) == 0); // Ensure alignment
     return &new->data;
 }
