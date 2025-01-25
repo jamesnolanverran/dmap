@@ -1,9 +1,9 @@
 #include "hmap.h"
-#include <stdarg.h> 
-#include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h> 
-#include <string.h> 
+
+#ifdef HMAP_DEBUG
+    #include <stdio.h>
+#endif
 
 #ifdef HMAP_DEBUG
     #if defined(_MSC_VER) || defined(_WIN32)
@@ -45,6 +45,15 @@
 
 #define ALIGN_DOWN_PTR(p, a) ((void *)ALIGN_DOWN((uintptr_t)(p), (a)))
 #define ALIGN_UP_PTR(p, a) ((void *)ALIGN_UP((uintptr_t)(p), (a)))
+
+typedef signed char        s8; // signed 8-bit
+typedef short              s16;
+typedef int                s32;
+typedef long long          s64;
+typedef unsigned char      u8; // unsigned 8-bit
+typedef unsigned short     u16;
+typedef unsigned int       u32;
+typedef unsigned long long u64;
 
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
@@ -153,7 +162,7 @@ typedef struct {
         .page_size = 0,
     };
     static size_t v_alloc_posix_get_page_size(){
-        long page_size = sysconf(_SC_PAGESIZE);
+        s32 page_size = sysconf(_SC_PAGESIZE);
         if (page_size <= 0) {
             //todo: error ?
             return 0;
@@ -176,11 +185,11 @@ typedef struct {
     }
     static bool v_alloc_posix_commit(void *addr, size_t total_size, size_t additional_bytes) {
         addr = (char *)addr + total_size - additional_bytes;
-        int result = mprotect(addr, additional_bytes, PROT_READ | PROT_WRITE);
+        s32 result = mprotect(addr, additional_bytes, PROT_READ | PROT_WRITE);
         return result ? true : false;
     }
     static bool v_alloc_posix_decommit(void *addr, size_t extra_size) {
-        int result = madvise(addr, extra_size, MADV_DONTNEED);
+        s32 result = madvise(addr, extra_size, MADV_DONTNEED);
         if(result == 0){
             result = mprotect(addr, extra_size, PROT_NONE);
         }
@@ -229,7 +238,7 @@ void* v_alloc_committ(AllocInfo *alloc_info, size_t additional_bytes) {
             return NULL; // out of reserved memory
         }
         size_t new_size = alloc_info->end - alloc_info->base + adjusted_additional_bytes;
-        int result = v_alloc.commit(alloc_info->base, new_size, adjusted_additional_bytes);
+        s32 result = v_alloc.commit(alloc_info->base, new_size, adjusted_additional_bytes);
         if (result == -1) {
             return NULL; // failed commit
         }
@@ -339,7 +348,7 @@ void *darr__grow(void *arr, size_t elem_size) {
     }
     new->alloc_info = alloc_info;
     new->cap += old_capacity;
-    assert(((uintptr_t)&new->data & (DATA_ALIGNMENT - 1)) == 0); // Ensure alignment
+    assert(((size_t)&new->data & (DATA_ALIGNMENT - 1)) == 0); // Ensure alignment
     return &new->data;
 }
 // /////////////////////////////////////////////
@@ -352,16 +361,16 @@ void *darr__grow(void *arr, size_t elem_size) {
 
 
 // declare hash function
-void MurmurHash3_x64_128(const void *key, int len, uint32_t seed, void *out);
+void MurmurHash3_x64_128(const void *key, s32 len, u32 seed, void *out);
 
-static void hmap_generate_hash(void *key, size_t key_size, unsigned long long hash_out[2]) {
-    MurmurHash3_x64_128(key, (int)key_size, 0x9747b28c, hash_out);
+static void hmap_generate_hash(void *key, size_t key_size, u64 hash_out[2]) {
+    MurmurHash3_x64_128(key, (s32)key_size, 0x9747b28c, hash_out);
 }
-static size_t hmap_find_empty_slot(HmapEntry *entries, unsigned long long hash[2], size_t hash_cap){
+static size_t hmap_find_empty_slot(HmapEntry *entries, u64 hash[2], size_t hash_cap){
     size_t idx = (hash[0] ^ hash[1]) % hash_cap;
     size_t j = hash_cap;
     while(true){
-        if( j-- == 0) assert(false); // unreachable - suggests there were no empty slots
+        if(j-- == 0) assert(false); // unreachable - suggests there were no empty slots
         if(entries[idx].data_index == HMAP_EMPTY || entries[idx].data_index == HMAP_DELETED){
             return idx;
         }
@@ -516,7 +525,7 @@ bool hmap__insert_entry(void *hmap, void *key, size_t key_size){
     // get a fresh data slot
     d->returned_idx = darr_len(d->free_list) ? darr_pop(d->free_list) : d->len;
     d->len += 1;
-    unsigned long long hash_out[2];
+    u64 hash_out[2];
     hmap_generate_hash(key, key_size, hash_out);
     size_t entry_index = hmap_find_empty_slot(d->entries, hash_out, d->hash_cap);
     if(entry_index == HMAP_ALREADY_EXISTS){
@@ -540,7 +549,7 @@ static size_t hmap__get_entry_index(void *hmap, void *key, size_t key_size){
         return HMAP_EMPTY; // Check if the hashmap is empty or NULL
     }
     HMapHdr *d = hmap__hdr(hmap); // Retrieve the header of the hashmap for internal structure access.
-    unsigned long long hash[2];
+    u64 hash[2];
     hmap_generate_hash(key, key_size, hash); // Generate a hash value for the given key.
     size_t idx = (hash[0] ^ hash[1]) % d->hash_cap; // Calculate the initial index to start the search in the hash table.
     size_t j = d->hash_cap; // Counter to ensure the loop doesn't iterate more than the capacity of the hashmap.
@@ -621,12 +630,12 @@ size_t hmap_range(void *hmap){
 #define FORCE_INLINE inline
 #endif
 
-static FORCE_INLINE uint32_t rotl32 ( uint32_t x, int8_t r )
+static FORCE_INLINE u32 rotl32 (u32 x, s8 r)
 {
   return (x << r) | (x >> (32 - r));
 }
 
-static FORCE_INLINE uint64_t rotl64 ( uint64_t x, int8_t r )
+static FORCE_INLINE u64 rotl64 (u64 x, s8 r)
 {
   return (x << r) | (x >> (64 - r));
 }
@@ -638,7 +647,7 @@ static FORCE_INLINE uint64_t rotl64 ( uint64_t x, int8_t r )
 
 #define getblock(p, i) (p[i])
 
-static FORCE_INLINE uint32_t fmix32 ( uint32_t h )
+static FORCE_INLINE u32 fmix32 (u32 h)
 {
   h ^= h >> 16;
   h *= 0x85ebca6b;
@@ -651,7 +660,7 @@ static FORCE_INLINE uint32_t fmix32 ( uint32_t h )
 
 //----------
 
-static FORCE_INLINE uint64_t fmix64 ( uint64_t k )
+static FORCE_INLINE u64 fmix64 (u64 k)
 {
   k ^= k >> 33;
   k *= BIG_CONSTANT(0xff51afd7ed558ccd);
@@ -661,28 +670,28 @@ static FORCE_INLINE uint64_t fmix64 ( uint64_t k )
 
   return k;
 }
-void MurmurHash3_x64_128 ( const void * key, const int len,
-                           const uint32_t seed, void * out )
+void MurmurHash3_x64_128 (const void * key, const s32 len,
+                           const u32 seed, void * out)
 {
-  const uint8_t * data = (const uint8_t*)key;
-  const int nblocks = len / 16;
-  int i;
+  const u8 * data = (const u8*)key;
+  const s32 nblocks = len / 16;
+  s32 i;
 
-  uint64_t h1 = seed;
-  uint64_t h2 = seed;
+  u64 h1 = seed;
+  u64 h2 = seed;
 
-  uint64_t c1 = BIG_CONSTANT(0x87c37b91114253d5);
-  uint64_t c2 = BIG_CONSTANT(0x4cf5ad432745937f);
+  u64 c1 = BIG_CONSTANT(0x87c37b91114253d5);
+  u64 c2 = BIG_CONSTANT(0x4cf5ad432745937f);
 
   //----------
   // body
 
-  const uint64_t * blocks = (const uint64_t *)(data);
+  const u64 * blocks = (const u64 *)(data);
 
   for(i = 0; i < nblocks; i++)
   {
-    uint64_t k1 = getblock(blocks,i*2+0);
-    uint64_t k2 = getblock(blocks,i*2+1);
+    u64 k1 = getblock(blocks,i*2+0);
+    u64 k2 = getblock(blocks,i*2+1);
 
     k1 *= c1; k1  = ROTL64(k1,31); k1 *= c2; h1 ^= k1;
 
@@ -696,30 +705,30 @@ void MurmurHash3_x64_128 ( const void * key, const int len,
   //----------
   // tail
 
-  const uint8_t * tail = (const uint8_t*)(data + nblocks*16);
+  const u8 * tail = (const u8*)(data + nblocks*16);
 
-  uint64_t k1 = 0;
-  uint64_t k2 = 0;
+  u64 k1 = 0;
+  u64 k2 = 0;
 
   switch(len & 15)
   {
-  case 15: k2 ^= (uint64_t)(tail[14]) << 48;
-  case 14: k2 ^= (uint64_t)(tail[13]) << 40;
-  case 13: k2 ^= (uint64_t)(tail[12]) << 32;
-  case 12: k2 ^= (uint64_t)(tail[11]) << 24;
-  case 11: k2 ^= (uint64_t)(tail[10]) << 16;
-  case 10: k2 ^= (uint64_t)(tail[ 9]) << 8;
-  case  9: k2 ^= (uint64_t)(tail[ 8]) << 0;
+  case 15: k2 ^= (u64)(tail[14]) << 48;
+  case 14: k2 ^= (u64)(tail[13]) << 40;
+  case 13: k2 ^= (u64)(tail[12]) << 32;
+  case 12: k2 ^= (u64)(tail[11]) << 24;
+  case 11: k2 ^= (u64)(tail[10]) << 16;
+  case 10: k2 ^= (u64)(tail[ 9]) << 8;
+  case  9: k2 ^= (u64)(tail[ 8]) << 0;
            k2 *= c2; k2  = ROTL64(k2,33); k2 *= c1; h2 ^= k2;
 
-  case  8: k1 ^= (uint64_t)(tail[ 7]) << 56;
-  case  7: k1 ^= (uint64_t)(tail[ 6]) << 48;
-  case  6: k1 ^= (uint64_t)(tail[ 5]) << 40;
-  case  5: k1 ^= (uint64_t)(tail[ 4]) << 32;
-  case  4: k1 ^= (uint64_t)(tail[ 3]) << 24;
-  case  3: k1 ^= (uint64_t)(tail[ 2]) << 16;
-  case  2: k1 ^= (uint64_t)(tail[ 1]) << 8;
-  case  1: k1 ^= (uint64_t)(tail[ 0]) << 0;
+  case  8: k1 ^= (u64)(tail[ 7]) << 56;
+  case  7: k1 ^= (u64)(tail[ 6]) << 48;
+  case  6: k1 ^= (u64)(tail[ 5]) << 40;
+  case  5: k1 ^= (u64)(tail[ 4]) << 32;
+  case  4: k1 ^= (u64)(tail[ 3]) << 24;
+  case  3: k1 ^= (u64)(tail[ 2]) << 16;
+  case  2: k1 ^= (u64)(tail[ 1]) << 8;
+  case  1: k1 ^= (u64)(tail[ 0]) << 0;
            k1 *= c1; k1  = ROTL64(k1,31); k1 *= c2; h1 ^= k1;
   };
 
@@ -737,6 +746,6 @@ void MurmurHash3_x64_128 ( const void * key, const int len,
   h1 += h2;
   h2 += h1;
 
-  ((uint64_t*)out)[0] = h1;
-  ((uint64_t*)out)[1] = h2;
+  ((u64*)out)[0] = h1;
+  ((u64*)out)[1] = h2;
 }

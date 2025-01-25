@@ -6,7 +6,7 @@
 - **darr** – A stretchy buffer-style dynamic array with dynamic typing.
 - **v_alloc** – A cross-platform reserve/commit-style arena allocator.
 
-Support for **Linux, macOS, and Windows**. (untested on mac)
+Support for **Linux, macOS, and Windows**. 64 bit only. (untested on mac)
 
 ## Features
 
