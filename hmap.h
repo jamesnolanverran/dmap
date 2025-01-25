@@ -140,7 +140,7 @@ static inline size_t hmap_cap(void *d){ return d ? hmap__hdr(d)->cap : 0; }
 //         v: value of any chosen type
 #define hmap_insert(d, k, v) (hmap__fit((d), hmap_count(d) + 1), (hmap__insert_entry((d), (k), sizeof(*(k))) ? ((d)[hmap__ret_idx(d)] = (v)), hmap__ret_idx(d) : HMAP_ALREADY_EXISTS)) 
 // same as above but uses a string as key value8
-#define hmap_kstr_insert(d, v, k, key_size) (hmap__fit((d), hmap_count(d) + 1), (hmap__insert_entry((d), (k), (key_size)) ? ((d)[hmap__ret_idx(d)] = (v)), hmap__ret_idx(d) : HMAP_ALREADY_EXISTS)) 
+#define hmap_kstr_insert(d, k, v, key_size) (hmap__fit((d), hmap_count(d) + 1), (hmap__insert_entry((d), (k), (key_size)) ? ((d)[hmap__ret_idx(d)] = (v)), hmap__ret_idx(d) : HMAP_ALREADY_EXISTS)) 
 
 // hmap_get: Retrieves a pointer to the value associated with the key 'k' in hashmap 'd'.
 // Parameters:
