@@ -1,6 +1,6 @@
 # hmap
 
-**hmap** is a lightweight *low-friction* C library for dynamic memory management. It includes:
+**hmap** is a lightweight **low-friction** C library for dynamic memory management. It includes:
 
 - **hmap** – A stretchy buffer-style hashmap with dynamic typing.
 - **darr** – A stretchy buffer-style dynamic array with dynamic typing.
@@ -42,11 +42,14 @@ int main() {
     }
 
     // use a c-string as a key
-    hmap_kstr_insert(my_hmap, "key", 33, strlen("key"));
+    char *str_key = "my_key";
+    size_t key_len = strlen(str_key);
 
-    value = hmap_kstr_get(my_hmap, "key", strlen("key"));
+    hmap_kstr_insert(my_hmap, str_key, 33, key_len);
+    value = hmap_kstr_get(my_hmap, str_key, key_len);
+
     if (value) {
-        printf("Value for key 'key': %d\n", *value);
+        printf("Value for key 'my_key': %d\n", *value);
     }
 
     // Clean up
