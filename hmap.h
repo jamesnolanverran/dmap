@@ -3,13 +3,17 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
 // MARK: DARR
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
 
-#define DEBUG
+#define HMAP_DEBUG
 
 #define DATA_ALIGNMENT 16
 #define MAX_ARENA_CAPACITY 1024 * 1024 * 1024 // 1GB
@@ -22,6 +26,13 @@
 #define HMAP_GROWTH_MULTIPLIER 2.0f
 #define HMAP_HASHTABLE_MULTIPLIER 1.6f
 
+#ifndef SIZE_MAX
+    #if defined(__x86_64__) || defined(_M_X64) || defined(_WIN64)
+        #define SIZE_MAX 0xffffffffffffffffULL
+    #else
+        #define SIZE_MAX 0xffffffffU
+    #endif
+#endif
 
 typedef enum {
     ALLOC_MALLOC,  // malloc/realloc
@@ -121,7 +132,7 @@ static inline size_t hmap_cap(void *d){ return d ? hmap__hdr(d)->cap : 0; }
 
 // Helper Macros - Utilized by other macros.
 // =========================================
-#define hmap__ret_idx(d) (hmap__hdr(d)->returned_idx) // NOT_FOUND or HMAP_EMPTY by default
+#define hmap__ret_idx(d) (hmap__hdr(d)->returned_idx) // HMAP_ALREADY_EXISTS or HMAP_EMPTY by default
 // hmap__entries: Retrieves the entries of the hmapionary 'd'. 
 // Note: caller should ensure 'd' is valid
 #define hmap__entries(d) (hmap__hdr(d)->entries)
@@ -134,7 +145,7 @@ static inline size_t hmap_cap(void *d){ return d ? hmap__hdr(d)->cap : 0; }
 ////////////////////////////////////////////
 
 #define hmap_init(d, initial_capacity, alloc_type) ((d) = hmap__init((d), initial_capacity, sizeof(*(d)), alloc_type))
-// returns the index in the data array where the value is stored. If key exists returns NOT_FOUND. 
+// returns the index in the data array where the value is stored. If key exists returns HMAP_ALREADY_EXISTS. 
 // param - d: pointer to array of v's
 //         k: ptr to key of any type
 //         v: value of any chosen type
@@ -161,17 +172,17 @@ static inline size_t hmap_cap(void *d){ return d ? hmap__hdr(d)->cap : 0; }
                                ( &hmap__idx_to_val((d), hmap__ret_idx(d))) :                     \
                                ( (hmap_insert((d), (k), (v))), hmap_get_ptr((d), (k))) )
 
-// returns the data index of the deleted item or NOT_FOUND / SIZE_MAX. The user should mark deleted 
+// returns the data index of the deleted item or HMAP_ALREADY_EXISTS (SIZE_MAX). The user should mark deleted 
 // data as invalid in some way if the user intends to iterate over the data array.
-#define hmap_delete(d,k) (hmap__delete(d, k, sizeof(*(k)))) // returns index to deleted data or NOT_FOUND on fail
+#define hmap_delete(d,k) (hmap__delete(d, k, sizeof(*(k)))) // returns index to deleted data or HMAP_ALREADY_EXISTS on fail
 
-#define hmap_get_idx(d,k) (hmap__get_idx(d, k, sizeof(*(k)))) // returns index to data or NOT_FOUND
+#define hmap_get_idx(d,k) (hmap__get_idx(d, k, sizeof(*(k)))) // returns index to data or HMAP_ALREADY_EXISTS
 
 #define hmap_free(d) ((d) ? (hmap__free(d), (d) = NULL, 1) : 0)
 
 
 size_t hmap_kstr_get_idx(void *hmap, void *key, size_t key_size); // same as hmap_get but for keys that are strings. 
-size_t hmap_kstr_delete(void *hmap, void *key, size_t key_size); // returns index to deleted data or NOT_FOUND
+size_t hmap_kstr_delete(void *hmap, void *key, size_t key_size); // returns index to deleted data or HMAP_ALREADY_EXISTS
 size_t hmap_range(void *hmap); // for iterating directly over the entire data array, including items marked as deleted
 void hmap_clear(void *hmap);
 
@@ -190,4 +201,7 @@ bool v_alloc_free(AllocInfo* alloc_info);
 
 void hmap_set_error_handler(void (*handler)(char *err_msg)); // set a custom error handler in case of failed allocation
 
+#ifdef __cplusplus
+}
+#endif
 #endif // HMAP_H

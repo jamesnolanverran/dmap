@@ -16,10 +16,9 @@ Support for **Linux, macOS, and Windows**. (untested on mac)
 
 ## Memory Management
 
-By using a reserve/commit memory model with `VirtualAlloc` (or equivalent), `darr` and `hmap` can provide stable pointers, avoiding reallocations that typically require working with indices instead. An optional init function allows switching between traditional `malloc`/`realloc` or the reserve/commit approach, giving flexibility based on the use case.
+By using a reserve/commit memory model with `VirtualAlloc` (or equivalent), `darr` and `hmap` can provide stable pointers, avoiding reallocations that typically require working with indices instead. An optional init function allows switching between `malloc`/`realloc` or the reserve/commit approach.
 
-hmap uses reserve/commit by default.
-darr uses malloc/realloc by default.
+hmap uses reserve/commit by default; darr uses malloc/realloc by default.
 
 ## Example Usage
 

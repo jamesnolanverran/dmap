@@ -5,7 +5,7 @@
 #include <stdlib.h> 
 #include <string.h> 
 
-#ifdef DEBUG
+#ifdef HMAP_DEBUG
     #if defined(_MSC_VER) || defined(_WIN32)
         #include <intrin.h>
         #define DEBUGBREAK() __debugbreak()
