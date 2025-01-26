@@ -15,16 +15,33 @@ extern "C" {
 
 #define HMAP_DEBUG
 
-#define DATA_ALIGNMENT 16
-#define MAX_ARENA_CAPACITY 1024 * 1024 * 1024 // 1GB
+#ifndef DATA_ALIGNMENT
+    #define DATA_ALIGNMENT 16
+#endif
 
-#define DARR_INITIAL_CAPACITY 64 
-#define HMAP_INITIAL_CAPACITY 64
+#ifndef MAX_ARENA_CAPACITY
+    #define MAX_ARENA_CAPACITY (1024 * 1024 * 1024) 
+#endif
 
-#define DARR_GROWTH_MULTIPLIER 2.0f
+#ifndef DARR_INITIAL_CAPACITY
+    #define DARR_INITIAL_CAPACITY 64
+#endif
 
-#define HMAP_GROWTH_MULTIPLIER 2.0f
-#define HMAP_HASHTABLE_MULTIPLIER 1.6f
+#ifndef HMAP_INITIAL_CAPACITY
+    #define HMAP_INITIAL_CAPACITY 64
+#endif
+
+#ifndef DARR_GROWTH_MULTIPLIER
+    #define DARR_GROWTH_MULTIPLIER 2.0f
+#endif
+
+#ifndef HMAP_GROWTH_MULTIPLIER
+    #define HMAP_GROWTH_MULTIPLIER 2.0f
+#endif
+
+#ifndef HMAP_HASHTABLE_MULTIPLIER
+    #define HMAP_HASHTABLE_MULTIPLIER 1.6f
+#endif
 
 #ifndef SIZE_MAX
     #if defined(__x86_64__) || defined(_M_X64) || defined(_WIN64)

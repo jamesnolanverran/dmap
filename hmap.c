@@ -255,6 +255,7 @@ void v_alloc_reset(AllocInfo *alloc_info) {
     }
 }
 bool v_alloc_decommit(void *addr, size_t extra_size) {
+    // todo: The v_alloc_decommit function does not update the AllocInfo struct. 
     return v_alloc.decommit(addr, extra_size);
 }
 bool v_alloc_free(AllocInfo* alloc_info) {
