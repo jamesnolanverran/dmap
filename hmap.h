@@ -14,7 +14,7 @@ extern "C" {
 // /////////////////////////////////////////////
 
 #define HMAP_DEBUG
-
+// todo: make more configurable
 #ifndef DATA_ALIGNMENT
     #define DATA_ALIGNMENT 16
 #endif

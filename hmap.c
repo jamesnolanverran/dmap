@@ -61,6 +61,7 @@ typedef unsigned long long u64;
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
 
+// todo: improve default error handler 
 static void hmap_default_error_handler(char* err_msg) {
     perror(err_msg);
     exit(1); 
