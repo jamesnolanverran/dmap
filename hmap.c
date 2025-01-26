@@ -78,7 +78,6 @@ void hmap_set_error_handler(void (*handler)(char* err_msg)) {
 // /////////////////////////////////////////////
 
 typedef struct {
-    void *(*allocate)(size_t size);  
     void *(*reserve)(size_t size);   
     bool (*commit)(void *addr, size_t total_size, size_t additional_bytes);    
     bool (*decommit)(void *addr, size_t size);  
@@ -91,14 +90,12 @@ typedef struct {
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
 
-    static void *v_alloc_win_allocate(size_t size);
     static void *v_alloc_win_reserve(size_t size);
     static bool v_alloc_win_commit(void *addr, size_t total_size, size_t additional_bytes);
     static bool v_alloc_win_decommit(void *addr, size_t size);
     static bool v_alloc_win_release(void *addr, size_t size);
 
     V_Allocator v_alloc = {
-        .allocate = v_alloc_win_allocate,
         .reserve = v_alloc_win_reserve,
         .commit = v_alloc_win_commit,
         .decommit = v_alloc_win_decommit,
@@ -115,12 +112,6 @@ typedef struct {
             v_alloc.page_size = v_alloc_win_get_page_size();
         }
         return VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
-    }
-    void *v_alloc_win_allocate(size_t size) {
-        if(v_alloc.page_size == 0){ // todo: improve this
-            v_alloc.page_size = v_alloc_win_get_page_size();
-        }
-        return VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     }
     static bool v_alloc_win_commit(void *addr, size_t total_size, size_t additional_bytes) {
         (void)additional_bytes;
@@ -148,14 +139,12 @@ typedef struct {
     #include <unistd.h>
     #include <sys/mman.h>
 
-    static void *v_alloc_posix_allocate(size_t size);
     static void *v_alloc_posix_reserve(size_t size);
     static bool v_alloc_posix_commit(void *addr, size_t total_size, size_t additional_bytes);
     static bool v_alloc_posix_decommit(void *addr, size_t extra_size);
     static bool v_alloc_posix_release(void *addr, size_t size);
 
     V_Allocator v_alloc = {
-        .allocate = v_alloc_posix_allocate,
         .reserve = v_alloc_posix_reserve,
         .commit = v_alloc_posix_commit,
         .decommit = v_alloc_posix_decommit,
@@ -169,13 +158,6 @@ typedef struct {
             return 0;
         }
         return (size_t)page_size;
-    }
-    static void *v_alloc_posix_allocate(size_t size) {
-        if (v_alloc.page_size == 0) {
-            v_alloc.page_size = v_alloc_posix_get_page_size();
-        }
-        void *ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-        return ptr == MAP_FAILED ? NULL : ptr;
     }
     static void *v_alloc_posix_reserve(size_t size) {
         if (v_alloc.page_size == 0) {
@@ -373,9 +355,6 @@ void *darr__grow(void *arr, size_t elem_size) {
 // MARK: HMAP
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
-
-
-
 
 // declare hash function
 void MurmurHash3_x64_128(const void *key, s32 len, u32 seed, void *out);

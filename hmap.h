@@ -97,8 +97,6 @@ void darr__free(void *a);
 #define darr_pop(a) ((a)[darr__hdr(a)->len-- - 1])  // it's up to the user to null check etc.
 #define darr_peek(a) ((a)[darr__hdr(a)->len - 1] ) // users should write typesafe versions with checks
 
-
-
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
 // MARK: HMAP
@@ -202,7 +200,6 @@ size_t hmap_kstr_get_idx(void *hmap, void *key, size_t key_size); // same as hma
 size_t hmap_kstr_delete(void *hmap, void *key, size_t key_size); // returns index to deleted data or HMAP_ALREADY_EXISTS
 size_t hmap_range(void *hmap); // for iterating directly over the entire data array, including items marked as deleted
 void hmap_clear(void *hmap);
-
 
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
