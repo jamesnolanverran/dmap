@@ -39,9 +39,6 @@ An optional initialization function allows switching between these models.
 ```c
 #include "hmap.h"
 #include <stdio.h>
-
-#include "hmap.h"
-#include <stdio.h>
 #include <string.h>
 
 int main() {
