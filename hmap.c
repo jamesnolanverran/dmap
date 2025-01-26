@@ -255,9 +255,24 @@ void v_alloc_reset(AllocInfo *alloc_info) {
         alloc_info->ptr = alloc_info->base;
     }
 }
-bool v_alloc_decommit(void *addr, size_t extra_size) {
-    // todo: The v_alloc_decommit function does not update the AllocInfo struct. 
-    return v_alloc.decommit(addr, extra_size);
+bool v_alloc_decommit(AllocInfo *alloc_info, size_t extra_size) {
+    if (!alloc_info || extra_size == 0) {
+        return false; // Invalid input
+    }
+    // Ensure extra_size is aligned to the page size
+    extra_size = ALIGN_UP(extra_size, alloc_info->page_size);
+    // Ensure extra_size does not exceed the committed memory size
+    if (extra_size > (size_t)(alloc_info->end - alloc_info->base)) {
+        return false; // Cannot decommit more memory than is committed
+    }
+    // Ensure the decommit region is page-aligned
+    char *decommit_start = ALIGN_DOWN_PTR(alloc_info->end - extra_size, alloc_info->page_size);
+    // Decommit the memory
+    bool result = v_alloc.decommit(decommit_start, extra_size);
+    if (result) {
+        alloc_info->end = decommit_start;
+    }
+    return result;
 }
 bool v_alloc_free(AllocInfo* alloc_info) {
     if (alloc_info->base == NULL) {
