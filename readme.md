@@ -227,3 +227,7 @@ int main() {
 ## License
 
 [MIT License](LICENSE)
+
+## Credits & Inspiration
+`darr` is adapted from **Per Vognsen's Bitwise series**. His work inspired me to build a similar approach for hashmaps with `dhmap`.
+[Per Vognsen on YouTube](https://www.youtube.com/pervognsen).
