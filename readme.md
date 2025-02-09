@@ -14,7 +14,6 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 
 ## Features
 
-- low friction, very easy to use
 - dynamic typing
 - dynamic memory
 - cross-platform
