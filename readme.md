@@ -69,13 +69,13 @@ int main() {
         printf("Value for key_1 1: %d\n", *value);  
     }
 
-    // Use a C-string as a key_1
+    // Use a C-string as key
     char *str_key = "my_key";
 
-    // Insert a value using a string key_1
+    // Insert a value using a string key
     dmap_kstr_insert(my_dmap, str_key, 33, strlen(str_key)); // string keys need length param
 
-    // Retrieve a value using a string key_1
+    // Retrieve a value using a string key
     value = dmap_kstr_get(my_dmap, str_key, strlen(str_key));
     if (value) {
         printf("Value for key 'str_key': %d\n", *value);  
