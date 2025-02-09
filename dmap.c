@@ -1,11 +1,12 @@
-#include "hmap.h"
+#include "dmap.h"
 #include <stdlib.h> 
+#include <stdint.h>
 
-#ifdef HMAP_DEBUG
+#ifdef DMAP_DEBUG
     #include <stdio.h>
 #endif
 
-#ifdef HMAP_DEBUG
+#ifdef DMAP_DEBUG
     #if defined(_MSC_VER) || defined(_WIN32)
         #include <intrin.h>
         #define DEBUGBREAK() __debugbreak()
@@ -62,14 +63,14 @@ typedef unsigned long long u64;
 // /////////////////////////////////////////////
 
 // todo: improve default error handler 
-static void hmap_default_error_handler(char* err_msg) {
+static void dmap_default_error_handler(char* err_msg) {
     perror(err_msg);
     exit(1); 
 }
-static void (*hmap_error_handler)(char* err_msg) = hmap_default_error_handler;
+static void (*dmap_error_handler)(char* err_msg) = dmap_default_error_handler;
 
-void hmap_set_error_handler(void (*handler)(char* err_msg)) {
-    hmap_error_handler = handler ? handler : hmap_default_error_handler; // fallback to default
+void dmap_set_error_handler(void (*handler)(char* err_msg)) {
+    dmap_error_handler = handler ? handler : dmap_default_error_handler; // fallback to default
 }
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
@@ -130,7 +131,7 @@ typedef struct {
         return success ? true : false;
     }
     static bool v_alloc_win_release(void *addr, size_t size) {
-        (void)size; // Suppress unused parameter warning
+        (void)size; 
         return VirtualFree(addr, 0, MEM_RELEASE);
     }
 
@@ -194,7 +195,7 @@ typedef struct {
 bool v_alloc_reserve(AllocInfo *alloc_info, size_t reserve_size) {
     alloc_info->base = (char*)v_alloc.reserve(reserve_size);
     if (alloc_info->base == NULL) {
-        return false; // Initialization failed
+        return false; // initialization failed
     }
     alloc_info->ptr = alloc_info->base;
     alloc_info->end = alloc_info->base; // because we're only reserving
@@ -204,7 +205,7 @@ bool v_alloc_reserve(AllocInfo *alloc_info, size_t reserve_size) {
 }
 // commits initial size or grows alloc_info by additional size, returns NULL on fail
 void* v_alloc_committ(AllocInfo *alloc_info, size_t additional_bytes) {
-    if(additional_bytes == 0){ // consider this an error
+    if(additional_bytes == 0){ // we will consider this an error
         return NULL;
     }
     additional_bytes = ALIGN_UP(additional_bytes, DATA_ALIGNMENT);
@@ -232,24 +233,25 @@ void* v_alloc_committ(AllocInfo *alloc_info, size_t additional_bytes) {
     return ptr; 
 }
 void v_alloc_reset(AllocInfo *alloc_info) {
-    // Reset the pointer to the start of the committed region
+    // reset the pointer to the start of the committed region
+    // todo: decommit
     if(alloc_info){
         alloc_info->ptr = alloc_info->base;
     }
 }
 bool v_alloc_decommit(AllocInfo *alloc_info, size_t extra_size) {
     if (!alloc_info || extra_size == 0) {
-        return false; // Invalid input
+        return false; // invalid input
     }
-    // Ensure extra_size is aligned to the page size
+    // ensure extra_size is aligned to the page size
     extra_size = ALIGN_UP(extra_size, alloc_info->page_size);
-    // Ensure extra_size does not exceed the committed memory size
+    // ensure extra_size does not exceed the committed memory size
     if (extra_size > (size_t)(alloc_info->end - alloc_info->base)) {
-        return false; // Cannot decommit more memory than is committed
+        return false; // cannot decommit more memory than is committed
     }
-    // Ensure the decommit region is page-aligned
+    // ensure the decommit region is page-aligned
     char *decommit_start = ALIGN_DOWN_PTR(alloc_info->end - extra_size, alloc_info->page_size);
-    // Decommit the memory
+    // decommit the memory
     bool result = v_alloc.decommit(decommit_start, extra_size);
     if (result) {
         alloc_info->end = decommit_start;
@@ -285,7 +287,7 @@ void darr__free(void *arr){
 // ALLOC_VIRTUAL uses a reserve/commit strategy, virtualalloc on win32, w/ stable pointers
 void *darr__init(void *arr, size_t initial_capacity, size_t elem_size, AllocType alloc_type){
     if(arr) {
-        hmap_error_handler("darr_init: array already initialized, argument must be null");
+        dmap_error_handler("darr_init: array already initialized (argument must be null)");
     }
     DarrHdr *new_hdr = NULL;
     size_t new_cap = MAX(DARR_INITIAL_CAPACITY, initial_capacity); 
@@ -295,10 +297,10 @@ void *darr__init(void *arr, size_t initial_capacity, size_t elem_size, AllocType
     {
         case ALLOC_VIRTUAL:
             #if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
-                hmap_error_handler("ALLOC_VIRTUAL not supported on this platform; use ALLOC_MALLOC");
+                dmap_error_handler("ALLOC_VIRTUAL not supported on this platform; use ALLOC_MALLOC");
             #endif
             if(!v_alloc_committ(&alloc_info, size_in_bytes)) {
-                hmap_error_handler("Allocation failed");
+                dmap_error_handler("Allocation failed");
             }
             new_hdr = (DarrHdr*)alloc_info.base;
             assert((size_t)(alloc_info.ptr - alloc_info.base) == offsetof(DarrHdr, data) + (new_cap * elem_size));
@@ -306,7 +308,7 @@ void *darr__init(void *arr, size_t initial_capacity, size_t elem_size, AllocType
         case ALLOC_MALLOC:
             new_hdr = (DarrHdr*)malloc(size_in_bytes);
             if(!new_hdr) {
-                hmap_error_handler("Out of memory");
+                dmap_error_handler("Out of memory");
             }
             break;
     }
@@ -331,16 +333,16 @@ void *darr__grow(void *arr, size_t elem_size) {
         case ALLOC_VIRTUAL: {
             size_t additional_bytes = (size_t)((float)old_cap * (DARR_GROWTH_MULTIPLIER - 1.0f) * elem_size);
             if(!v_alloc_committ(&alloc_info, additional_bytes)) {
-                hmap_error_handler("Allocation failed");
+                dmap_error_handler("Allocation failed");
             }
             new = (DarrHdr*)alloc_info.base;
             break;
         }
         case ALLOC_MALLOC: {
-            size_t new_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER); // double capacity
+            size_t new_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER); 
             new = realloc(dh, new_size_in_bytes);
             if(!new) {
-                hmap_error_handler("Out of memory");
+                dmap_error_handler("Out of memory");
             }
             break;
         }
@@ -352,26 +354,26 @@ void *darr__grow(void *arr, size_t elem_size) {
 }
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
-// MARK: HMAP
+// MARK: DMAP
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
 
 // declare hash function
 void MurmurHash3_x64_128(const void *key, s32 len, u32 seed, void *out);
 
-static void hmap_generate_hash(void *key, size_t key_size, u64 hash_out[2]) {
+static void dmap_generate_hash(void *key, size_t key_size, u64 hash_out[2]) {
     MurmurHash3_x64_128(key, (s32)key_size, 0x9747b28c, hash_out);
 }
-static size_t hmap_find_empty_slot(HmapEntry *entries, u64 hash[2], size_t hash_cap){
+static size_t dmap_find_empty_slot(DmapEntry *entries, u64 hash[2], size_t hash_cap){
     size_t idx = (hash[0] ^ hash[1]) % hash_cap;
     size_t j = hash_cap;
     while(true){
         if(j-- == 0) assert(false); // unreachable - suggests there were no empty slots
-        if(entries[idx].data_index == HMAP_EMPTY || entries[idx].data_index == HMAP_DELETED){
+        if(entries[idx].data_index == DMAP_EMPTY || entries[idx].data_index == DMAP_DELETED){
             return idx;
         }
         if(entries[idx].hash[0] == hash[0] && entries[idx].hash[1] == hash[1]){
-            return HMAP_ALREADY_EXISTS;
+            return DMAP_ALREADY_EXISTS;
         }
         idx += 1;
         if(idx >= hash_cap){
@@ -379,98 +381,100 @@ static size_t hmap_find_empty_slot(HmapEntry *entries, u64 hash[2], size_t hash_
         }
     }
 }
-// Grows the entry array of the hashmap to accommodate more elements
-static void hmap_grow_entries(void *hmap, size_t new_hash_cap, size_t elem_size) {
-    HMapHdr *d = hmap__hdr(hmap); // Retrieve the hashmap header
-    size_t new_size_in_bytes = new_hash_cap * elem_size; // Calculate the new size in bytes for the entries
-    size_t old_hash_cap = d->hash_cap;
-    HmapEntry *new_entries = malloc(new_size_in_bytes); // Allocate new memory for the entries
+// grows the entry array of the hashmap to accommodate more elements
+static void dmap_grow_entries(void *dmap, size_t new_hash_cap, size_t old_hash_cap, size_t elem_size) {
+    DmapHdr *d = dmap__hdr(dmap); // retrieve the hashmap header
+    size_t new_size_in_bytes = new_hash_cap * elem_size; // calculate the new size in bytes for the entries
+    DmapEntry *new_entries = malloc(new_size_in_bytes); // allocate new memory for the entries
     if (!new_entries) {
-        hmap_error_handler("Out of memory");
+        dmap_error_handler("Out of memory");
     }
-    memset(new_entries, 0xff, new_size_in_bytes); // Initialize all bits to 1 (used for HMAP_EMPTY marker)
-    // If the hashmap has existing entries, rehash them into the new entry array
-    if (hmap_count(hmap)) {
+    for (size_t i = 0; i < new_hash_cap; i++) { // entries are empty by default
+        new_entries[i].data_index = DMAP_EMPTY;
+    }
+    // if the hashmap has existing entries, rehash them into the new entry array
+    if (dmap_count(dmap)) {
         for (size_t i = 0; i < old_hash_cap; i++) {
-            if(d->entries[i].data_index == HMAP_EMPTY) continue; // Skip empty entries
-            if(d->entries[i].data_index == HMAP_DELETED) continue; // Skip deleted entries
-            // Find a new empty slot for the entry and update its position
-            size_t new_index = hmap_find_empty_slot(new_entries, d->entries[i].hash, new_hash_cap);
+            if(d->entries[i].data_index == DMAP_EMPTY) continue; // skip empty entries
+            if(d->entries[i].data_index == DMAP_DELETED) continue; // skip deleted entries
+            // find a new empty slot for the entry and update its position
+            size_t new_index = dmap_find_empty_slot(new_entries, d->entries[i].hash, new_hash_cap);
             new_entries[new_index] = d->entries[i];
         }
     }
-    // Replace the old entry array with the new one
-    if (d->entries) {
-        free(d->entries);
-    }
+    // replace the old entry array with the new one
+    free(d->entries);
     d->entries = new_entries;
 }
-// Grows the hashmap to a new capacity
-void *hmap__grow(void *hmap, size_t elem_size) {
-    if (!hmap) {
+// grows the hashmap to a new capacity
+void *dmap__grow(void *dmap, size_t elem_size) {
+    if (!dmap) {
         // when this is the case we just want the defaults
         AllocType alloc_type = ALLOC_VIRTUAL;
         #if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
             alloc_type = ALLOC_MALLOC;
         #endif
-        return hmap__init(hmap, 0, elem_size, alloc_type);
+        return dmap__init(dmap, 0, elem_size, alloc_type);
     }
-    HMapHdr *new_hdr = NULL;
-    HMapHdr *dh = hmap__hdr(hmap);
+    DmapHdr *new_hdr = NULL;
+    DmapHdr *dh = dmap__hdr(dmap);
     AllocInfo alloc_info = dh->alloc_info;
-    size_t old_cap = hmap_cap(hmap);
+    size_t old_cap = dmap_cap(dmap);
     switch (dh->alloc_type) 
     {
         case ALLOC_VIRTUAL: {
-            size_t additional_bytes = (size_t)((float)old_cap * (HMAP_GROWTH_MULTIPLIER - 1.0f) * elem_size);
+            size_t additional_bytes = (size_t)((float)old_cap * (DMAP_GROWTH_MULTIPLIER - 1.0f) * elem_size);
             if(!v_alloc_committ(&alloc_info, additional_bytes)) {
-                hmap_error_handler("Allocation failed");
+                dmap_error_handler("Allocation failed");
             }
-            new_hdr = (HMapHdr*)alloc_info.base;
+            new_hdr = (DmapHdr*)alloc_info.base;
             break;
         }
         case ALLOC_MALLOC: {
-            size_t new_size_in_bytes = offsetof(HMapHdr, data) + (size_t)((float)old_cap * (float)elem_size * HMAP_GROWTH_MULTIPLIER); // double capacity
+            size_t new_size_in_bytes = offsetof(DmapHdr, data) + (size_t)((float)old_cap * (float)elem_size * DMAP_GROWTH_MULTIPLIER); // double capacity
             new_hdr = realloc(dh, new_size_in_bytes);
             if(!new_hdr) {
-                hmap_error_handler("Out of memory");
+                dmap_error_handler("Out of memory");
             }
             break;
         }
     }
     new_hdr->alloc_info = alloc_info;
-    new_hdr->cap = (size_t)((float)old_cap * HMAP_GROWTH_MULTIPLIER);
-    size_t new_hash_cap = (size_t)((float)new_hdr->cap * HMAP_HASHTABLE_MULTIPLIER);
-    // Grow the entries to fit into the newly allocated space
-    hmap_grow_entries(new_hdr->data, new_hash_cap, sizeof(HmapEntry)); // entries should be double the capacity
-    new_hdr->hash_cap = new_hash_cap;
+    new_hdr->cap = (size_t)((float)old_cap * DMAP_GROWTH_MULTIPLIER);
 
-    assert(((uintptr_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // Ensure alignment
-    return new_hdr->data; // Return the aligned data pointer
+    size_t new_hash_cap = (size_t)((float)new_hdr->cap * DMAP_HASHTABLE_MULTIPLIER); 
+    size_t old_hash_cap = new_hdr->hash_cap;
+
+    new_hdr->hash_cap = new_hash_cap;
+    // grow the entries to fit into the newly allocated space
+    dmap_grow_entries(new_hdr->data, new_hash_cap, old_hash_cap, sizeof(DmapEntry)); 
+
+    assert(((uintptr_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // ensure alignment
+    return new_hdr->data; // return the aligned data pointer
 }
-void *hmap__init(void *hmap, size_t initial_capacity, size_t elem_size, AllocType alloc_type){
-    if(hmap) {
-        hmap_error_handler("hmap_init: hmap already initialized, argument must be null");
+void *dmap__init(void *dmap, size_t initial_capacity, size_t elem_size, AllocType alloc_type){
+    if(dmap) {
+        dmap_error_handler("dmap_init: dmap already initialized, argument must be null");
     }
-    HMapHdr *new_hdr = NULL;
-    initial_capacity = MAX(HMAP_INITIAL_CAPACITY, initial_capacity); 
-    size_t size_in_bytes = offsetof(HMapHdr, data) + (initial_capacity * elem_size);
+    DmapHdr *new_hdr = NULL;
+    initial_capacity = MAX(DMAP_INITIAL_CAPACITY, initial_capacity); 
+    size_t size_in_bytes = offsetof(DmapHdr, data) + (initial_capacity * elem_size);
     AllocInfo alloc_info = {0};
     switch (alloc_type) 
     {
         case ALLOC_VIRTUAL:
             #if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
-                hmap_error_handler("ALLOC_VIRTUAL not supported on this platform; use ALLOC_MALLOC");
+                dmap_error_handler("ALLOC_VIRTUAL not supported on this platform; use ALLOC_MALLOC");
             #endif
             if(!v_alloc_committ(&alloc_info, size_in_bytes)) {
-                hmap_error_handler("Allocation failed");
+                dmap_error_handler("Allocation failed");
             }
-            new_hdr = (HMapHdr*)alloc_info.base;
+            new_hdr = (DmapHdr*)alloc_info.base;
         break;
         case ALLOC_MALLOC:
-            new_hdr = (HMapHdr*)malloc(size_in_bytes);
+            new_hdr = (DmapHdr*)malloc(size_in_bytes);
             if(!new_hdr){
-                hmap_error_handler("Out of memory");
+                dmap_error_handler("Out of memory");
             }
         break;
     }
@@ -478,16 +482,16 @@ void *hmap__init(void *hmap, size_t initial_capacity, size_t elem_size, AllocTyp
     new_hdr->alloc_type = alloc_type;
     new_hdr->len = 0;
     new_hdr->cap = initial_capacity;
-    new_hdr->hash_cap = (size_t)((float)initial_capacity * HMAP_HASHTABLE_MULTIPLIER);
-    new_hdr->returned_idx = HMAP_EMPTY;
+    new_hdr->hash_cap = (size_t)((float)initial_capacity * DMAP_HASHTABLE_MULTIPLIER);
+    new_hdr->returned_idx = DMAP_EMPTY;
     new_hdr->entries = NULL;
     new_hdr->free_list = NULL;
-    hmap_grow_entries(new_hdr->data, new_hdr->hash_cap, sizeof(HmapEntry));
-    assert(((uintptr_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // Ensure alignment
+    dmap_grow_entries(new_hdr->data, new_hdr->hash_cap, 0, sizeof(DmapEntry));
+    assert(((uintptr_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // ensure alignment
     return new_hdr->data;
 }
-void hmap__free(void *hmap){
-    HMapHdr *d = hmap__hdr(hmap);
+void dmap__free(void *dmap){
+    DmapHdr *d = dmap__hdr(dmap);
     if(d){
         if(d->entries) {
             free(d->entries); 
@@ -501,116 +505,103 @@ void hmap__free(void *hmap){
                 v_alloc_free(&d->alloc_info);
                 break;
             case ALLOC_MALLOC:
-                free(hmap__hdr(hmap));
+                free(dmap__hdr(dmap));
                 break;
         }
     }
 }
-// clear/reset the hmap without freeing memory
-void hmap_clear(void *hmap){
-    if(!hmap) {
-        hmap_error_handler("hmap_clear: argument must not be null");
+// clear/reset the dmap without freeing memory
+void dmap_clear(void *dmap){
+    if(!dmap) {
+        dmap_error_handler("dmap_clear: argument must not be null");
     }
-    HMapHdr *d = hmap__hdr(hmap);
-    memset(d->entries, 0xff, d->hash_cap * sizeof(HmapEntry)); // Initialize all bits to 1 (used for HMAP_EMPTY marker)
+    DmapHdr *d = dmap__hdr(dmap);
+    for (size_t i = 0; i < d->hash_cap; i++) { // entries are empty by default
+        d->entries[i].data_index = DMAP_EMPTY;
+    }
     darr_clear(d->free_list);
     d->len = 0;
 }
-bool hmap__insert_entry(void *hmap, void *key, size_t key_size){ 
-    HMapHdr *d = hmap__hdr(hmap);
+bool dmap__insert_entry(void *dmap, void *key, size_t key_size){ 
+    DmapHdr *d = dmap__hdr(dmap);
     // get a fresh data slot
     d->returned_idx = darr_len(d->free_list) ? darr_pop(d->free_list) : d->len;
     d->len += 1;
     u64 hash_out[2];
-    hmap_generate_hash(key, key_size, hash_out);
-    size_t entry_index = hmap_find_empty_slot(d->entries, hash_out, d->hash_cap);
-    if(entry_index == HMAP_ALREADY_EXISTS){
+    dmap_generate_hash(key, key_size, hash_out);
+    size_t entry_index = dmap_find_empty_slot(d->entries, hash_out, d->hash_cap);
+    if(entry_index == DMAP_ALREADY_EXISTS){
         return false;
     }
-    d->entries[entry_index] = (HmapEntry){d->returned_idx, {hash_out[0], hash_out[1]}};  
-    // we use a free list to keep track of empty slots in the data array from deletions. Use those first. 
+    d->entries[entry_index] = (DmapEntry){d->returned_idx, {hash_out[0], hash_out[1]}};  
+    // we use a free list to keep track of empty slots in the data array from deletions. Use those first
     return true;
 }
-// Function: hmap__get_entry_index
-// Description: Searches for a key in the hashmap and returns its index if found.
-//              This function is used internally for operations like insertions or deletions.
-// Parameters:
-//   void *hmap - Pointer to the hashmap in which to search for the key.
-//   void *key - Pointer to the key to be searched.
-//   size_t key_size - Size of the key.
-// Returns:
-//   size_t - The index of the entry where the key is found, or HMAP_EMPTY if the key is not present.
-static size_t hmap__get_entry_index(void *hmap, void *key, size_t key_size){
-    if(hmap_cap(hmap)==0) {
-        return HMAP_EMPTY; // Check if the hashmap is empty or NULL
+// returns: size_t - The index of the entry if the key is found, or DMAP_EMPTY if the key is not present
+static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
+    if(dmap_cap(dmap)==0) {
+        return DMAP_EMPTY; // check if the hashmap is empty or NULL
     }
-    HMapHdr *d = hmap__hdr(hmap); // Retrieve the header of the hashmap for internal structure access.
+    DmapHdr *d = dmap__hdr(dmap); // retrieve the header of the hashmap for internal structure access
     u64 hash[2];
-    hmap_generate_hash(key, key_size, hash); // Generate a hash value for the given key.
-    size_t idx = (hash[0] ^ hash[1]) % d->hash_cap; // Calculate the initial index to start the search in the hash table.
-    size_t j = d->hash_cap; // Counter to ensure the loop doesn't iterate more than the capacity of the hashmap.
+    dmap_generate_hash(key, key_size, hash); // generate a hash value for the given key
+    size_t idx = (hash[0] ^ hash[1]) % d->hash_cap; // calculate the initial index to start the search in the hash table
+    size_t j = d->hash_cap; // counter to ensure the loop doesn't iterate more than the capacity of the hashmap
 
-    while(true) { // Loop to search for the key in the hashmap.
+    while(true) { // loop to search for the key in the hashmap
         if(j-- == 0) assert(false); // unreachable -- suggests entries is full
-        if(d->entries[idx].data_index == HMAP_EMPTY) {  // if the entry is empty, the key is not in the hashmap.
-            return HMAP_EMPTY;
+        if(d->entries[idx].data_index == DMAP_EMPTY) {  // if the entry is empty, the key is not in the hashmap
+            return DMAP_EMPTY;
         }
-        if(d->entries[idx].hash[0] == hash[0] && d->entries[idx].hash[1] == hash[1]) { // If the hash matches, the correct entry has been found.
+        if(d->entries[idx].hash[0] == hash[0] && d->entries[idx].hash[1] == hash[1]) { // if the hash matches, the correct entry has been found
             return idx;
         }
-        idx += 1; // Move to the next index, wrapping around to the start if necessary.
+        idx += 1; // move to the next index, wrapping around to the start if necessary
         if(idx >= d->hash_cap) { 
             idx = 0; 
         } 
     }
 }
-bool hmap__find_data_idx(void *hmap, void *key, size_t key_size){
-    size_t idx = hmap__get_entry_index(hmap, key, key_size);
-    if(idx == HMAP_EMPTY) { 
+bool dmap__find_data_idx(void *dmap, void *key, size_t key_size){
+    size_t idx = dmap__get_entry_index(dmap, key, key_size);
+    if(idx == DMAP_EMPTY) { 
         return false; // entry is not found
     }
-    HMapHdr *d = hmap__hdr(hmap);
-    d->returned_idx = d->entries[idx].data_index;
+    DmapHdr *d = dmap__hdr(dmap);
+    d->returned_idx = d->entries[idx].data_index; // workaround: we store the data index in the struct so that our macro expression can access it later
     return true;
 }
-// Function: hmap_get
-// Description: Retrieves the index of the data associated with a given key in a hashmap.
-// Parameters:
-//   void *hmap - Pointer to the hashmap from which the data index is to be retrieved.
-//   void *key - Pointer to the key for which the data index is required.
-//   size_t key_size - Size of the key.
-// Returns:
-//   size_t - The index of the data associated with the key, or NOT_FOUND (SIZE_MAX) if the key is not found.
-size_t hmap__get_idx(void *hmap, void *key, size_t key_size){
-    size_t idx = hmap__get_entry_index(hmap, key, key_size);
-    if(idx == HMAP_EMPTY) {
-        return HMAP_EMPTY;
+// returns: size_t - The index of the data associated with the key, or DMAP_EMPTY (SIZE_MAX) if the key is not found
+size_t dmap__get_idx(void *dmap, void *key, size_t key_size){
+    size_t idx = dmap__get_entry_index(dmap, key, key_size);
+    if(idx == DMAP_EMPTY) {
+        return DMAP_EMPTY;
     }
-    HMapHdr *d = hmap__hdr(hmap);
+    DmapHdr *d = dmap__hdr(dmap);
     return d->entries[idx].data_index;
 }
-size_t hmap__delete(void *hmap, void *key, size_t key_size){
-    size_t idx = hmap__get_entry_index(hmap, key, key_size);
-    if(idx == HMAP_EMPTY) {
-        return HMAP_EMPTY;
+    // returns the data index of the deleted entry. Caller may wish to mark data as invalid
+size_t dmap__delete(void *dmap, void *key, size_t key_size){
+    size_t idx = dmap__get_entry_index(dmap, key, key_size);
+    if(idx == DMAP_EMPTY) {
+        return DMAP_EMPTY;
     }
-    HMapHdr *d = hmap__hdr(hmap);
+    DmapHdr *d = dmap__hdr(dmap);
     size_t data_index = d->entries[idx].data_index;
-    d->entries[idx].data_index = HMAP_DELETED;
+    d->entries[idx].data_index = DMAP_DELETED;
     darr_push(d->free_list, data_index);
     d->len -= 1; 
-    // return the data index of the deleted entry. Caller may wish to mark data as invalid
     return data_index;
 }
-size_t hmap_kstr_delete(void *hmap, void *key, size_t key_size){
-    return hmap__delete(hmap, key, key_size);
+size_t dmap_kstr_delete(void *dmap, void *key, size_t key_size){
+    return dmap__delete(dmap, key, key_size);
 }
-size_t hmap_kstr_get_idx(void *hmap, void *key, size_t key_size){
-    return hmap__get_idx(hmap, key, key_size);
+size_t dmap_kstr_get_idx(void *dmap, void *key, size_t key_size){
+    return dmap__get_idx(dmap, key, key_size);
 }
 // len of the data array, including invalid entries. For iterating
-size_t hmap_range(void *hmap){ 
-    return hmap ? hmap__hdr(hmap)->len + darr_len(hmap__hdr(hmap)->free_list) : 0; 
+size_t dmap_range(void *dmap){ 
+    return dmap ? dmap__hdr(dmap)->len + darr_len(dmap__hdr(dmap)->free_list) : 0; 
 } 
 
 // /////////////////////////////////////////////
