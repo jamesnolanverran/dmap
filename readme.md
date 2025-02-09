@@ -23,7 +23,7 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 
 ## Performance
 - The library is designed for **ease of use** without sacrificing performance.
-- Benchmarked against uthash, **dmap** performs 2-3× faster insertions and uses 2-7× less memory.
+- Benchmarked against uthash, **dmap** performs 2-3× faster for insertions and uses 2-7× less memory.
 
 ## Memory Management
 
