@@ -30,13 +30,12 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 
 The dmap and darr libs support two memory management models:
 
-1. **Reserve/Commit Model**:  
-   - Uses `VirtualAlloc` or `mmap` to reserve and commit memory, providing stable pointers and avoiding reallocations.
-   - This is the default for `dmap`.
-
-2. **Malloc/Realloc Model**:  
+1. **Malloc/Realloc Model**:  
    - Uses traditional `malloc` and `realloc` for memory allocation.
-   - This is the default for `darr`.
+   - This is the default for `darr` and `dmap`.
+
+2. **Reserve/Commit Model**:  
+   - Uses `VirtualAlloc` or `mmap` to reserve and commit memory, providing stable pointers and avoiding reallocations.
 
 An optional initialization function allows switching between these models.
 

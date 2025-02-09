@@ -411,10 +411,7 @@ static void dmap_grow_entries(void *dmap, size_t new_hash_cap, size_t old_hash_c
 void *dmap__grow(void *dmap, size_t elem_size) {
     if (!dmap) {
         // when this is the case we just want the defaults
-        AllocType alloc_type = ALLOC_VIRTUAL;
-        #if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
-            alloc_type = ALLOC_MALLOC;
-        #endif
+        AllocType alloc_type = ALLOC_MALLOC;
         return dmap__init(dmap, 0, elem_size, alloc_type);
     }
     DmapHdr *new_hdr = NULL;
