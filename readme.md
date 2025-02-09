@@ -62,7 +62,7 @@ int main() {
     dmap_insert(my_dmap, &key_1, 42);   
     dmap_insert(my_dmap, &key_2, 13);   
 
-    // Retrieve a value using an integer key_1
+    // Retrieve a value using an integer key
     int *value = dmap_get(my_dmap, &key_1);
     if (value) {
         printf("Value for key_1 1: %d\n", *value);  

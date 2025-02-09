@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 
-
 #ifdef DMAP_DEBUG
     #if defined(_MSC_VER) || defined(_WIN32)
         #include <intrin.h>
@@ -656,86 +655,96 @@ static FORCE_INLINE u64 fmix64 (u64 k)
 
   return k;
 }
-void MurmurHash3_x64_128 (const void * key, const s32 len,
-                           const u32 seed, void * out)
-{
-  const u8 * data = (const u8*)key;
-  const s32 nblocks = len / 16;
-  s32 i;
+void MurmurHash3_x64_128 (const void * key, const s32 len, const u32 seed, void * out) {
 
-  u64 h1 = seed;
-  u64 h2 = seed;
+    u8 *temp_data = NULL;
+    u8 *data;
+    if (((uintptr_t)key & (sizeof(u64) - 1)) != 0) { 
+        temp_data = (u8*)malloc(len);
+        if(!temp_data){
+            dmap_error_handler("Memory allocation failed for misaligned key.");
+        }
+        memcpy(temp_data, key, len);
+        data = temp_data;
+    }
+    else {
+        data = (u8*)key;
+    }
+    const s32 nblocks = len / 16;
+    s32 i;
 
-  u64 c1 = BIG_CONSTANT(0x87c37b91114253d5);
-  u64 c2 = BIG_CONSTANT(0x4cf5ad432745937f);
+    u64 h1 = seed;
+    u64 h2 = seed;
 
-  //----------
-  // body
+    u64 c1 = BIG_CONSTANT(0x87c37b91114253d5);
+    u64 c2 = BIG_CONSTANT(0x4cf5ad432745937f);
 
-  const u64 * blocks = (const u64 *)(data);
+    //----------
+    // body
 
-  for(i = 0; i < nblocks; i++)
-  {
-    // u64 k1 = getblock(blocks,i*2+0);
-    // u64 k2 = getblock(blocks,i*2+1);
-    u64 k1;
-    u64 k2;
-    memcpy(&k1, data + (i * 16), sizeof(u64));
-    memcpy(&k2, data + (i * 16 + 8), sizeof(u64));
+    const u64 * blocks = (const u64 *)(data);
 
-    k1 *= c1; k1  = ROTL64(k1,31); k1 *= c2; h1 ^= k1;
+    for(i = 0; i < nblocks; i++)
+    {
+      u64 k1 = getblock(blocks,i*2+0);
+      u64 k2 = getblock(blocks,i*2+1);
 
-    h1 = ROTL64(h1,27); h1 += h2; h1 = h1*5+0x52dce729;
+      k1 *= c1; k1  = ROTL64(k1,31); k1 *= c2; h1 ^= k1;
 
-    k2 *= c2; k2  = ROTL64(k2,33); k2 *= c1; h2 ^= k2;
+      h1 = ROTL64(h1,27); h1 += h2; h1 = h1*5+0x52dce729;
 
-    h2 = ROTL64(h2,31); h2 += h1; h2 = h2*5+0x38495ab5;
-  }
+      k2 *= c2; k2  = ROTL64(k2,33); k2 *= c1; h2 ^= k2;
 
-  //----------
-  // tail
+      h2 = ROTL64(h2,31); h2 += h1; h2 = h2*5+0x38495ab5;
+    }
 
-  const u8 * tail = (const u8*)(data + nblocks*16);
+    //----------
+    // tail
 
-  u64 k1 = 0;
-  u64 k2 = 0;
+    const u8 * tail = (const u8*)(data + nblocks*16);
 
-  switch(len & 15)
-  {
-  case 15: k2 ^= (u64)(tail[14]) << 48;
-  case 14: k2 ^= (u64)(tail[13]) << 40;
-  case 13: k2 ^= (u64)(tail[12]) << 32;
-  case 12: k2 ^= (u64)(tail[11]) << 24;
-  case 11: k2 ^= (u64)(tail[10]) << 16;
-  case 10: k2 ^= (u64)(tail[ 9]) << 8;
-  case  9: k2 ^= (u64)(tail[ 8]) << 0;
-           k2 *= c2; k2  = ROTL64(k2,33); k2 *= c1; h2 ^= k2;
+    u64 k1 = 0;
+    u64 k2 = 0;
 
-  case  8: k1 ^= (u64)(tail[ 7]) << 56;
-  case  7: k1 ^= (u64)(tail[ 6]) << 48;
-  case  6: k1 ^= (u64)(tail[ 5]) << 40;
-  case  5: k1 ^= (u64)(tail[ 4]) << 32;
-  case  4: k1 ^= (u64)(tail[ 3]) << 24;
-  case  3: k1 ^= (u64)(tail[ 2]) << 16;
-  case  2: k1 ^= (u64)(tail[ 1]) << 8;
-  case  1: k1 ^= (u64)(tail[ 0]) << 0;
-           k1 *= c1; k1  = ROTL64(k1,31); k1 *= c2; h1 ^= k1;
-  };
+    switch(len & 15)
+    {
+        case 15: k2 ^= (u64)(tail[14]) << 48;
+        case 14: k2 ^= (u64)(tail[13]) << 40;
+        case 13: k2 ^= (u64)(tail[12]) << 32;
+        case 12: k2 ^= (u64)(tail[11]) << 24;
+        case 11: k2 ^= (u64)(tail[10]) << 16;
+        case 10: k2 ^= (u64)(tail[ 9]) << 8;
+        case  9: k2 ^= (u64)(tail[ 8]) << 0;
+                k2 *= c2; k2  = ROTL64(k2,33); k2 *= c1; h2 ^= k2;
 
-  //----------
-  // finalization
+        case  8: k1 ^= (u64)(tail[ 7]) << 56;
+        case  7: k1 ^= (u64)(tail[ 6]) << 48;
+        case  6: k1 ^= (u64)(tail[ 5]) << 40;
+        case  5: k1 ^= (u64)(tail[ 4]) << 32;
+        case  4: k1 ^= (u64)(tail[ 3]) << 24;
+        case  3: k1 ^= (u64)(tail[ 2]) << 16;
+        case  2: k1 ^= (u64)(tail[ 1]) << 8;
+        case  1: k1 ^= (u64)(tail[ 0]) << 0;
+        k1 *= c1; k1  = ROTL64(k1,31); k1 *= c2; h1 ^= k1;
+    };
 
-  h1 ^= len; h2 ^= len;
+    //----------
+    // finalization
 
-  h1 += h2;
-  h2 += h1;
+    h1 ^= len; h2 ^= len;
 
-  h1 = fmix64(h1);
-  h2 = fmix64(h2);
+    h1 += h2;
+    h2 += h1;
 
-  h1 += h2;
-  h2 += h1;
+    h1 = fmix64(h1);
+    h2 = fmix64(h2);
 
-  ((u64*)out)[0] = h1;
-  ((u64*)out)[1] = h2;
+    h1 += h2;
+    h2 += h1;
+
+    ((u64*)out)[0] = h1;
+    ((u64*)out)[1] = h2;
+    if(temp_data){
+        free(temp_data);
+    }
 }
