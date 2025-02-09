@@ -1,10 +1,8 @@
 #include "dmap.h"
 #include <stdlib.h> 
 #include <stdint.h>
+#include <stdio.h>
 
-#ifdef DMAP_DEBUG
-    #include <stdio.h>
-#endif
 
 #ifdef DMAP_DEBUG
     #if defined(_MSC_VER) || defined(_WIN32)

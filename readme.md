@@ -235,3 +235,5 @@ int main() {
 ## Credits & Inspiration
 `darr` is adapted from **Per Vognsen's Bitwise series**. His work inspired me to build a similar approach for hashmaps with `dmap`.
 [Per Vognsen on YouTube](https://www.youtube.com/pervognsen).
+```C
+    // Use a C-string as a key_1
