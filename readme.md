@@ -53,8 +53,8 @@ int main() {
     // Declare a dynamic hashmap (can store any type)
     int *my_dmap = NULL;
 
-    // Initialize the hashmap with default settings
-    dmap_init(my_dmap, 0, sizeof(int), ALLOC_MALLOC);
+    // Optional: Initialize the hashmap with custom settings
+    // dmap_init(my_dmap, 256, ALLOC_MALLOC);
 
     // Insert values into the hashmap using integer keys
     dmap_insert(my_dmap, 1, 42);   // Key = 1, Value = 42
@@ -191,8 +191,8 @@ int main() {
     // Declare a dynamic array (can store any type)
     int *my_array = NULL;
 
-    // OPTIONAL: initialize the array with custom settings, eg: initial capacity 512
-    darr_init(my_array, 512, ALLOC_MALLOC);
+    // OPTIONAL: initialize the array with custom settings: initial capacity 512
+    // darr_init(my_array, 512, ALLOC_MALLOC);
 
     // Push some elements into the array
     darr_push(my_array, 10);
