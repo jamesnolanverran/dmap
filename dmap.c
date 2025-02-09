@@ -2,6 +2,7 @@
 #include <stdlib.h> 
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 
 #ifdef DMAP_DEBUG
@@ -675,8 +676,12 @@ void MurmurHash3_x64_128 (const void * key, const s32 len,
 
   for(i = 0; i < nblocks; i++)
   {
-    u64 k1 = getblock(blocks,i*2+0);
-    u64 k2 = getblock(blocks,i*2+1);
+    // u64 k1 = getblock(blocks,i*2+0);
+    // u64 k2 = getblock(blocks,i*2+1);
+    u64 k1;
+    u64 k2;
+    memcpy(&k1, data + (i * 16), sizeof(u64));
+    memcpy(&k2, data + (i * 16 + 8), sizeof(u64));
 
     k1 *= c1; k1  = ROTL64(k1,31); k1 *= c2; h1 ^= k1;
 
