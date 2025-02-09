@@ -58,8 +58,8 @@ int main() {
     // dmap_init(my_dmap, 256, ALLOC_MALLOC);
 
     // Insert values into the hashmap using integer keys
-    dmap_insert(my_dmap, 1, 42);   // Key = 1, Value = 42
-    dmap_insert(my_dmap, 2, 99);   // Key = 2, Value = 99
+    int key = 1;
+    dmap_insert(my_dmap, &key, 42);   
 
     // Retrieve a value using an integer key
     int *value = dmap_get(my_dmap, 1);
