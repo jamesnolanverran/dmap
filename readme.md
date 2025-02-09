@@ -1,6 +1,8 @@
 # dmap
 
-**dmap** is a lightweight C library for dynamic memory management, designed for simplicity and ease of use without sacrificing performance. It includes:
+### **dmap** is a lightweight, zero-friction hashmap implementation in C. It is designed to be user friendly without sacrificing performance.
+
+## Includes:
 
 - **dmap** – A dynamic hashmap implementation with dynamic typing.
 - **darr** – A dynamic array implementation with dynamic typing.
