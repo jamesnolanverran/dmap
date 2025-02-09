@@ -34,6 +34,9 @@
     #define assert(cond) ((void)0)
 #endif
 
+#define DMAP_EMPTY (SIZE_MAX)
+#define DMAP_DELETED (SIZE_MAX - 1)
+
 #ifndef MIN
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))
 #endif

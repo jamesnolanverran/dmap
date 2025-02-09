@@ -104,8 +104,6 @@ typedef struct DmapHdr {
 } DmapHdr;
 
 // todo: ensure SIZE_MAX values below are never a valid index 
-#define DMAP_EMPTY (SIZE_MAX)
-#define DMAP_DELETED (SIZE_MAX - 1)
 
 #define DMAP_ALREADY_EXISTS (SIZE_MAX)
 
