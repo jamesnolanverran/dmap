@@ -1,8 +1,8 @@
-# dhmap
+# dmap
 
-**dhmap** is a lightweight C library for dynamic memory management, designed for simplicity and ease of use without sacrificing performance. It includes:
+**dmap** is a lightweight C library for dynamic memory management, designed for simplicity and ease of use without sacrificing performance. It includes:
 
-- **dhmap** – A dynamic hashmap implementation with dynamic typing.
+- **dmap** – A dynamic hashmap implementation with dynamic typing.
 - **darr** – A dynamic array implementation with dynamic typing.
 - **v_alloc** – A cross-platform reserve/commit-style arena allocator.
 
@@ -23,11 +23,11 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 
 ## Memory Management
 
-The dhmap and darr libs support two memory management models:
+The dmap and darr libs support two memory management models:
 
 1. **Reserve/Commit Model**:  
    - Uses `VirtualAlloc` (or equivalent) to reserve and commit memory, providing stable pointers and avoiding reallocations.
-   - This is the default for `dhmap`.
+   - This is the default for `dmap`.
 
 2. **Malloc/Realloc Model**:  
    - Uses traditional `malloc` and `realloc` for memory allocation.
@@ -37,27 +37,27 @@ An optional initialization function allows switching between these models.
 
 ---
 
-## Example DHMap Usage
+## Example Dmap Usage
 
 ```c
-#include "dhmap.h"
+#include "dmap.h"
 #include <stdio.h>
 #include <string.h>
 
 int main() {
 
     // Declare a dynamic hashmap (can store any type)
-    int *my_dhmap = NULL;
+    int *my_dmap = NULL;
 
     // Initialize the hashmap with default settings
-    dhmap_init(my_dhmap, 0, sizeof(int), ALLOC_MALLOC);
+    dmap_init(my_dmap, 0, sizeof(int), ALLOC_MALLOC);
 
     // Insert values into the hashmap using integer keys
-    dhmap_insert(my_dhmap, 1, 42);   // Key = 1, Value = 42
-    dhmap_insert(my_dhmap, 2, 99);   // Key = 2, Value = 99
+    dmap_insert(my_dmap, 1, 42);   // Key = 1, Value = 42
+    dmap_insert(my_dmap, 2, 99);   // Key = 2, Value = 99
 
     // Retrieve a value using an integer key
-    int *value = dhmap_get(my_dhmap, 1);
+    int *value = dmap_get(my_dmap, 1);
     if (value) {
         printf("Value for key 1: %d\n", *value);  
     }
@@ -66,45 +66,45 @@ int main() {
     char *str_key = "my_key";
 
     // Insert a value using a string key
-    dhmap_kstr_insert(my_dhmap, str_key, 33, strlen(str_key)); // string keys need length param
+    dmap_kstr_insert(my_dmap, str_key, 33, strlen(str_key)); // string keys need length param
 
     // Retrieve a value using a string key
-    value = dhmap_kstr_get(my_dhmap, str_key, strlen(str_key));
+    value = dmap_kstr_get(my_dmap, str_key, strlen(str_key));
     if (value) {
         printf("Value for key 'my_key': %d\n", *value);  
     }
 
     // Delete a key from the hashmap
-    size_t deleted_index = dhmap_delete(my_dhmap, 2);
-    if (deleted_index != DHMAP_EMPTY) {
+    size_t deleted_index = dmap_delete(my_dmap, 2);
+    if (deleted_index != DMAP_EMPTY) {
         printf("Deleted key 2, data index: %zu\n", deleted_index);  
 
         // Mark the deleted entry as invalid for safe iteration
         // If we intend to iterate over the data array directly, we need to indicate that deleted data is invalid.
         // Here, we use -1 to represent an invalid state.
-        my_dhmap[deleted_index] = -1;
+        my_dmap[deleted_index] = -1;
     }
 
     // Check if a key exists after deletion
-    value = dhmap_get(my_dhmap, 2);
+    value = dmap_get(my_dmap, 2);
     if (!value) {
         printf("Key 2 no longer exists in the hashmap.\n");  
     }
 
     // Iterate over the hashmap
     // Get the range of valid data indices (including deleted slots)
-    size_t range = dhmap_range(my_dhmap);
+    size_t range = dmap_range(my_dmap);
     printf("hashmap data array range: %zu\n", range);  
 
     // Iterate over the data array (including deleted slots)
     for (size_t i = 0; i < range; i++) {
-        if (my_dhmap[i] != -1) {  // Skip invalid/deleted entries
-            printf("Data at index %zu: %d\n", i, my_dhmap[i]);
+        if (my_dmap[i] != -1) {  // Skip invalid/deleted entries
+            printf("Data at index %zu: %d\n", i, my_dmap[i]);
         }
     }
 
     // Free the hashmap and set the pointer to NULL
-    dhmap_free(my_dhmap);
+    dmap_free(my_dmap);
 
     return 0;
 }
@@ -121,7 +121,7 @@ int main() {
 
 ### Error Handling
 - By default, memory allocation failures trigger an error and exit().
-- A custom error handler can be set using `dhmap_set_error_handler` to handle allocation failures gracefully.
+- A custom error handler can be set using `dmap_set_error_handler` to handle allocation failures gracefully.
 
 ---
 
@@ -137,7 +137,7 @@ int main() {
 ## Example V_Alloc Usage
 
 ```c
-#include "dhmap.h"
+#include "dmap.h"
 #include <stdio.h>
 
 int main() {
@@ -182,7 +182,7 @@ int main() {
 ## Example Darr Usage
 
 ```c
-#include "dhmap.h"
+#include "dmap.h"
 #include <stdio.h>
 
 int main() {
@@ -229,5 +229,5 @@ int main() {
 [MIT License](LICENSE)
 
 ## Credits & Inspiration
-`darr` is adapted from **Per Vognsen's Bitwise series**. His work inspired me to build a similar approach for hashmaps with `dhmap`.
+`darr` is adapted from **Per Vognsen's Bitwise series**. His work inspired me to build a similar approach for hashmaps with `dmap`.
 [Per Vognsen on YouTube](https://www.youtube.com/pervognsen).
