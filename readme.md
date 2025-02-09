@@ -21,6 +21,10 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 
 ---
 
+## Performance
+- The library is designed for **ease of use** without sacrificing performance.
+- Benchmarked against uthash, **dmap** performs 2-3× faster insertions and uses 2-7× less memory.
+
 ## Memory Management
 
 The dmap and darr libs support two memory management models:
@@ -115,9 +119,6 @@ int main() {
 - The library uses **128-bit Murmur3 hashes** and does not store original keys. As a result, it does not handle hash collisions internally.
 - The probability of a collision with a 128-bit hash is extremely low (e.g., less than 1 in 10^18 for 1 trillion keys). For most use cases, this is negligible.
 - If collision handling is required, users can bundle the hash key with the value in a struct and implement their own collision resolution logic.
-
-### Performance
-- The library is designed for **ease of use** without sacrificing performance.
 
 ### Error Handling
 - By default, memory allocation failures trigger an error and exit().
