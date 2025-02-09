@@ -1,6 +1,6 @@
 # dmap
 
-### **dmap** is a lightweight, zero-friction hashmap implementation in C, designed to be user friendly without sacrificing performance.
+### **Dmap** is a lightweight, zero-friction hashmap implementation in C, designed to be user friendly without sacrificing performance.
 
 ## Includes:
 
