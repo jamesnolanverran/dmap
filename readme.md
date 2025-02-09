@@ -58,31 +58,33 @@ int main() {
     // dmap_init(my_dmap, 256, ALLOC_MALLOC);
 
     // Insert values into the hashmap using integer keys
-    int key = 1;
-    dmap_insert(my_dmap, &key, 42);   
+    int key_1 = 1;
+    int key_2 = 2;
+    dmap_insert(my_dmap, &key_1, 42);   
+    dmap_insert(my_dmap, &key_2, 13);   
 
-    // Retrieve a value using an integer key
-    int *value = dmap_get(my_dmap, 1);
+    // Retrieve a value using an integer key_1
+    int *value = dmap_get(my_dmap, &key_1);
     if (value) {
-        printf("Value for key 1: %d\n", *value);  
+        printf("Value for key_1 1: %d\n", *value);  
     }
 
-    // Use a C-string as a key
+    // Use a C-string as a key_1
     char *str_key = "my_key";
 
-    // Insert a value using a string key
+    // Insert a value using a string key_1
     dmap_kstr_insert(my_dmap, str_key, 33, strlen(str_key)); // string keys need length param
 
-    // Retrieve a value using a string key
+    // Retrieve a value using a string key_1
     value = dmap_kstr_get(my_dmap, str_key, strlen(str_key));
     if (value) {
-        printf("Value for key 'my_key': %d\n", *value);  
+        printf("Value for key 'str_key': %d\n", *value);  
     }
 
     // Delete a key from the hashmap
-    size_t deleted_index = dmap_delete(my_dmap, 2);
+    size_t deleted_index = dmap_delete(my_dmap, &key_2);
     if (deleted_index != DMAP_EMPTY) {
-        printf("Deleted key 2, data index: %zu\n", deleted_index);  
+        printf("Deleted key_2, data index: %zu\n", deleted_index);  
 
         // Mark the deleted entry as invalid for safe iteration
         // If we intend to iterate over the data array directly, we need to indicate that deleted data is invalid.
@@ -91,9 +93,9 @@ int main() {
     }
 
     // Check if a key exists after deletion
-    value = dmap_get(my_dmap, 2);
+    value = dmap_get(my_dmap, &key_2);
     if (!value) {
-        printf("Key 2 no longer exists in the hashmap.\n");  
+        printf("key_2 no longer exists in the hashmap.\n");  
     }
 
     // Iterate over the hashmap
