@@ -607,7 +607,7 @@ size_t dmap_range(void *dmap){
 // MARK: MURMER
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
-// murmur3 hashing, taken from: https://github.com/PeterScott/murmur3
+// murmur3 hashing, taken and adapted from: https://github.com/PeterScott/murmur3
 
 #ifdef __GNUC__
 #define FORCE_INLINE __attribute__((always_inline)) inline
@@ -666,7 +666,6 @@ void MurmurHash3_x64_128 (const void * key, const s32 len, const u32 seed, void 
         }
         memcpy(temp_data, key, len);
         data = temp_data;
-        printf("alignment\n");
     }
     else {
         data = (u8*)key;
