@@ -551,7 +551,7 @@ static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
         if(d->entries[idx].data_index == DMAP_EMPTY) {  // if the entry is empty, the key is not in the hashmap
             return DMAP_EMPTY;
         }
-        if(d->entries[idx].hash[0] == hash[0] && d->entries[idx].hash[1] == hash[1]) { // if the hash matches, the correct entry has been found
+        if(d->entries[idx].data_index != DMAP_DELETED && d->entries[idx].hash[0] == hash[0] && d->entries[idx].hash[1] == hash[1]) { // if the hash matches, the correct entry has been found
             return idx;
         }
         idx += 1; // move to the next index, wrapping around to the start if necessary
@@ -659,13 +659,14 @@ void MurmurHash3_x64_128 (const void * key, const s32 len, const u32 seed, void 
 
     u8 *temp_data = NULL;
     u8 *data;
-    if (((uintptr_t)key & (sizeof(u64) - 1)) != 0) { 
+    if (((uintptr_t)key & (sizeof(u64) - 1)) != 0) {  // fix potential alignment issues - not optimal - todo
         temp_data = (u8*)malloc(len);
         if(!temp_data){
             dmap_error_handler("Memory allocation failed for misaligned key.");
         }
         memcpy(temp_data, key, len);
         data = temp_data;
+        printf("alignment\n");
     }
     else {
         data = (u8*)key;
