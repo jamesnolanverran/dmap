@@ -365,7 +365,7 @@ void MurmurHash3_x64_128(const void *key, s32 len, u32 seed, void *out);
 static void dmap_generate_hash(void *key, size_t key_size, u64 hash_out[2]) {
     MurmurHash3_x64_128(key, (s32)key_size, 0x9747b28c, hash_out);
 }
-static size_t dmap_find_empty_slot(DmapEntry *entries, u64 hash[2], size_t hash_cap){
+static size_t dmap_find_slot(DmapEntry *entries, u64 hash[2], size_t hash_cap){
     size_t idx = (hash[0] ^ hash[1]) % hash_cap;
     size_t j = hash_cap;
     while(true){
@@ -374,7 +374,7 @@ static size_t dmap_find_empty_slot(DmapEntry *entries, u64 hash[2], size_t hash_
             return idx;
         }
         if(entries[idx].hash[0] == hash[0] && entries[idx].hash[1] == hash[1]){
-            return DMAP_ALREADY_EXISTS;
+            return idx;
         }
         idx += 1;
         if(idx >= hash_cap){
@@ -399,7 +399,7 @@ static void dmap_grow_entries(void *dmap, size_t new_hash_cap, size_t old_hash_c
             if(d->entries[i].data_index == DMAP_EMPTY) continue; // skip empty entries
             if(d->entries[i].data_index == DMAP_DELETED) continue; // skip deleted entries
             // find a new empty slot for the entry and update its position
-            size_t new_index = dmap_find_empty_slot(new_entries, d->entries[i].hash, new_hash_cap);
+            size_t new_index = dmap_find_slot(new_entries, d->entries[i].hash, new_hash_cap);
             new_entries[new_index] = d->entries[i];
         }
     }
@@ -520,20 +520,16 @@ void dmap_clear(void *dmap){
     darr_clear(d->free_list);
     d->len = 0;
 }
-bool dmap__insert_entry(void *dmap, void *key, size_t key_size){ 
+void dmap__insert_entry(void *dmap, void *key, size_t key_size){ 
     DmapHdr *d = dmap__hdr(dmap);
     // get a fresh data slot
     d->returned_idx = darr_len(d->free_list) ? darr_pop(d->free_list) : d->len;
     d->len += 1;
     u64 hash_out[2];
     dmap_generate_hash(key, key_size, hash_out);
-    size_t entry_index = dmap_find_empty_slot(d->entries, hash_out, d->hash_cap);
-    if(entry_index == DMAP_ALREADY_EXISTS){
-        return false;
-    }
+    size_t entry_index = dmap_find_slot(d->entries, hash_out, d->hash_cap);
     d->entries[entry_index] = (DmapEntry){d->returned_idx, {hash_out[0], hash_out[1]}};  
     // we use a free list to keep track of empty slots in the data array from deletions. Use those first
-    return true;
 }
 // returns: size_t - The index of the entry if the key is found, or DMAP_EMPTY if the key is not present
 static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){

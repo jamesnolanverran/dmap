@@ -105,7 +105,7 @@ typedef struct DmapHdr {
 
 // todo: ensure SIZE_MAX values below are never a valid index 
 
-#define DMAP_ALREADY_EXISTS (SIZE_MAX)
+#define DMAP_INVALID (SIZE_MAX)
 
 ///////////////////////
 // These functions are internal but are utilized by macros so need to be declared here.
@@ -113,7 +113,7 @@ typedef struct DmapHdr {
 static inline DmapHdr *dmap__hdr(void *d);
 size_t dmap__get_idx(void *dmap, void *key, size_t key_size);
 size_t dmap__delete(void *dmap, void *key, size_t key_size);
-bool dmap__insert_entry(void *dmap, void *key, size_t key_size);
+void dmap__insert_entry(void *dmap, void *key, size_t key_size);
 bool dmap__find_data_idx(void *dmap, void *key, size_t key_size);
 void *dmap__grow(void *dmap, size_t elem_size) ;
 void *dmap__init(void *dmap, size_t initial_capacity, size_t elem_size, AllocType alloc_type);
@@ -139,15 +139,15 @@ static inline size_t dmap_cap(void *d){ return d ? dmap__hdr(d)->cap : 0; }
 // optionally define the initial capacity and the allocation type
 #define dmap_init(d, initial_capacity, alloc_type) ((d) = dmap__init((d), initial_capacity, sizeof(*(d)), alloc_type))
 
-// returns the index in the data array where the value is stored. If key exists returns DMAP_ALREADY_EXISTS. 
+// returns the index in the data array where the value is stored.
 // Parameters:
 // - 'd' is the hashmap from which to retrieve the value, effectively an array of v's.
 // - 'k' key for the value. Keys can be any type and are not stored.
 // - 'v' value 
-#define dmap_insert(d, k, v) (dmap__fit((d), dmap_count(d) + 1), (dmap__insert_entry((d), (k), sizeof(*(k))) ? ((d)[dmap__ret_idx(d)] = (v)), dmap__ret_idx(d) : DMAP_ALREADY_EXISTS)) 
+#define dmap_insert(d, k, v) (dmap__fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), sizeof(*(k))), ((d)[dmap__ret_idx(d)] = (v)), dmap__ret_idx(d)) 
 
 // same as above but uses a string as key value8
-#define dmap_kstr_insert(d, k, v, key_size) (dmap__fit((d), dmap_count(d) + 1), (dmap__insert_entry((d), (k), (key_size)) ? ((d)[dmap__ret_idx(d)] = (v)), dmap__ret_idx(d) : DMAP_ALREADY_EXISTS)) 
+#define dmap_kstr_insert(d, k, v, key_size) (dmap__fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), (key_size)), ((d)[dmap__ret_idx(d)] = (v)), dmap__ret_idx(d)) 
 
 // Returns: A pointer to the value corresponding to 'k' in 'd', or NULL if the key is not found.
 #define dmap_get(d,k) (dmap__find_data_idx((d), (k), sizeof(*(k))) ? &(d)[dmap__ret_idx(d)] : NULL)  
@@ -155,11 +155,11 @@ static inline size_t dmap_cap(void *d){ return d ? dmap__hdr(d)->cap : 0; }
 // Returns: A pointer to the value corresponding to 'k' in 'd', or NULL if the key is not found.
 #define dmap_kstr_get(d,k, key_size) (dmap__find_data_idx((d), (k), (key_size)) ? &(d)[dmap__ret_idx(d)] : NULL)  
 
-// returns the data index of the deleted item or DMAP_ALREADY_EXISTS (SIZE_MAX). 
+// returns the data index of the deleted item or DMAP_INVALID (SIZE_MAX). 
 // The user should mark deleted data as invalid if the user intends to iterate over the data array.
 #define dmap_delete(d,k) (dmap__delete(d, k, sizeof(*(k)))) 
 
-// returns index to data or DMAP_ALREADY_EXISTS
+// returns index to data or DMAP_INVALID
 // index can then be used to retrieve the value: d[idx]
 #define dmap_get_idx(d,k) (dmap__get_idx(d, k, sizeof(*(k)))) 
 
@@ -168,7 +168,7 @@ static inline size_t dmap_cap(void *d){ return d ? dmap__hdr(d)->cap : 0; }
 // same as dmap_get_idx but for keys that are strings. 
 size_t dmap_kstr_get_idx(void *dmap, void *key, size_t key_size); 
 
-// returns index to deleted data or DMAP_ALREADY_EXISTS
+// returns index to deleted data or DMAP_INVALID
 size_t dmap_kstr_delete(void *dmap, void *key, size_t key_size); 
 
 // for iterating directly over the entire data array, including items marked as deleted
