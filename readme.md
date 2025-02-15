@@ -19,7 +19,7 @@ int *value = dmap_get(my_dmap, &key_1);
 
 - **No manual setup** → Just declare and use.  
 - **Dynamic value storage** → Supports any value type without explicit casting.  
-- **Flexible key types** → Works with integers, structs, and more.  
+- **Flexible key types** → Works with integers, strings, and more.  
 - **Automatic memory management** → Grows dynamically as needed.  
 
 Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS support is untested.)
