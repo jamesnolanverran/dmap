@@ -7,7 +7,7 @@
 
 #ifdef DMAP_DEBUG
     #if defined(_MSC_VER) || defined(_WIN32)
-        #include <intrin.h>
+        #include <intrin.h>  
         #define DEBUGBREAK() __debugbreak()
     #else
         #define DEBUGBREAK() __builtin_trap()
@@ -392,8 +392,10 @@ typedef struct {
 
 // declare hash function
 static u64 dmap_fnv_64(void *buf, size_t len, u64 hval);
+static u64 dmap_wang_64(void *buf, size_t len, u64 hval);
 
 static u64 dmap_generate_hash(void *key, size_t key_size, u64 seed) {
+    // return dmap_fnv_64(key, key_size, seed);
     return dmap_fnv_64(key, key_size, seed);
 }
 // return a void* to entry
@@ -926,3 +928,20 @@ static u64 dmap_fnv_64(void *buf, size_t len, u64 hval) { // fnv_64a
     }
     return hval;
 }
+static u64 dmap_wang_64(void *buf, size_t len, u64 hval) {
+    unsigned char *p = (unsigned char *)buf;
+    
+    // Mix input bytes into hval (similar to FNV-1a style XOR processing)
+    for (size_t i = 0; i < len; i++) {
+        hval ^= (u64)p[i];
+        hval *= 0x100000001b3ULL;  // Standard FNV-1a prime
+    }
+
+    // Apply Wang's hash final mixing for better bit diffusion
+    hval = (hval ^ (hval >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    hval = (hval ^ (hval >> 27)) * 0x94d049bb133111ebULL;
+    hval = hval ^ (hval >> 31);
+
+    return hval;
+}
+
