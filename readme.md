@@ -50,7 +50,7 @@ The dmap and darr libs support two memory management models:
 2. **Reserve/Commit Model**:  
    - Uses `VirtualAlloc` or `mmap` to reserve and commit memory, providing stable pointers and avoiding reallocations.
 
-An optional initialization function allows switching between these models.
+An optional initialization function allows switching between these models, as well as preallocating an initial capacity.
 
 ## Error Handling
 - By default, memory allocation failures trigger an error and exit().
@@ -70,7 +70,7 @@ An optional initialization function allows switching between these models.
 
 ---
 
-## Full Example Dmap Usage
+## Full Example: Dmap Usage
 
 ```c
 #include "dmap.h"
@@ -83,7 +83,7 @@ int main() {
     int *my_dmap = NULL;
 
     // Optional: Initialize the hashmap with an initial capacity
-    dmap_init(my_dmap, 1024 * 1024, ALLOC_MALLOC); //   <--- esential for high performance for large tables!
+    dmap_init(my_dmap, 1024 * 1024, ALLOC_MALLOC); //   <--- essential for highest performance
     // Insert values into the hashmap using integer keys
     int key_1 = 1;
     int key_2 = 2;
@@ -157,6 +157,8 @@ int main() {
     return 0;
 }
 ```
+
+--- 
 
 ## Example V_Alloc Usage
 
