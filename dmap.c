@@ -282,7 +282,6 @@ void darr__free(void *arr){
             free(a->alloc_info);
             break;
         case ALLOC_MALLOC:
-            free(a->alloc_info);
             free(a);
             break;
     }
@@ -296,7 +295,7 @@ void *darr__init(void *arr, size_t initial_capacity, size_t elem_size, AllocType
     DarrHdr *new_hdr = NULL;
     size_t new_cap = MAX(DARR_INITIAL_CAPACITY, initial_capacity); 
     size_t size_in_bytes = offsetof(DarrHdr, data) + (new_cap * elem_size);
-    AllocInfo *alloc_info = (AllocInfo*)malloc(sizeof(AllocInfo));
+    AllocInfo *alloc_info = NULL;
     if(size_in_bytes > UINT32_MAX){
         dmap_error_handler("Error: Max size exceeded\n");
     }
@@ -306,6 +305,7 @@ void *darr__init(void *arr, size_t initial_capacity, size_t elem_size, AllocType
             #if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
                 dmap_error_handler("ALLOC_VIRTUAL not supported on this platform; use ALLOC_MALLOC");
             #endif
+            alloc_info = (AllocInfo*)malloc(sizeof(AllocInfo));
             if(!v_alloc_committ(alloc_info, size_in_bytes)) {
                 dmap_error_handler("Allocation failed");
             }
@@ -335,7 +335,6 @@ void *darr__grow(void *arr, size_t elem_size) {
     }
     DarrHdr *dh = darr__hdr(arr);
     DarrHdr *new = NULL;
-    AllocInfo alloc_info = *dh->alloc_info;
     size_t old_cap = darr_cap(arr);
     switch (dh->alloc_type) 
     {
@@ -348,10 +347,12 @@ void *darr__grow(void *arr, size_t elem_size) {
             if(total_size_in_bytes > max_capacity){
                 dmap_error_handler("Error: Max size exceeded\n");
             }
+            AllocInfo alloc_info = *dh->alloc_info;
             if(!v_alloc_committ(&alloc_info, additional_bytes)) {
                 dmap_error_handler("Allocation failed");
             }
             new = (DarrHdr*)alloc_info.base;
+            *new->alloc_info = alloc_info;
             break;
         }
         case ALLOC_MALLOC: 
@@ -368,7 +369,6 @@ void *darr__grow(void *arr, size_t elem_size) {
             break;
         }
     }
-    *new->alloc_info = alloc_info;
     new->cap += (u32)old_cap;
     assert(((size_t)&new->data & (DATA_ALIGNMENT - 1)) == 0); // Ensure alignment
     return &new->data;
@@ -653,12 +653,12 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     DmapHdr *dh = dmap__hdr(dmap);
     
     DmapHdr *new_hdr = NULL;
-    AllocInfo alloc_info = *dh->alloc_info;
     size_t old_cap = dmap_cap(dmap);
     switch (dh->alloc_type) 
     {
         case ALLOC_VIRTUAL: 
         {
+            AllocInfo alloc_info = *dh->alloc_info;
             size_t additional_bytes = (size_t)((float)old_cap * (DMAP_GROWTH_MULTIPLIER - 1.0f) * elem_size);
             size_t total_size_in_bytes = offsetof(DmapHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
             size_t max_capacity = (size_t)UINT32_MAX;
@@ -669,6 +669,7 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
                 dmap_error_handler("Allocation failed");
             }
             new_hdr = (DmapHdr*)alloc_info.base;
+            *new_hdr->alloc_info = alloc_info;
             break;
         }
         case ALLOC_MALLOC: 
@@ -685,7 +686,6 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
             break;
         }
     }
-    *new_hdr->alloc_info = alloc_info;
     new_hdr->cap = (size_t)((float)old_cap * DMAP_GROWTH_MULTIPLIER);
 
     size_t new_hash_cap = (size_t)((float)new_hdr->cap * DMAP_HASHTABLE_MULTIPLIER); 
@@ -706,13 +706,14 @@ static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t ele
     DmapHdr *new_hdr = NULL;
     initial_capacity = MAX(DMAP_INITIAL_CAPACITY, initial_capacity); 
     size_t size_in_bytes = offsetof(DmapHdr, data) + (initial_capacity * elem_size);
-    AllocInfo *alloc_info = (AllocInfo*)malloc(sizeof(AllocInfo));
+    AllocInfo *alloc_info = NULL;
     switch (alloc_type) 
     {
         case ALLOC_VIRTUAL:
             #if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
                 dmap_error_handler("ALLOC_VIRTUAL not supported on this platform; use ALLOC_MALLOC");
             #endif
+            alloc_info = (AllocInfo*)malloc(sizeof(AllocInfo));
             if(!v_alloc_committ(alloc_info, size_in_bytes)) {
                 dmap_error_handler("Allocation failed");
             }
@@ -785,7 +786,6 @@ void dmap__free(void *dmap){
                 free(d->alloc_info);
                 break;
             case ALLOC_MALLOC:
-                free(d->alloc_info);
                 free(dmap__hdr(dmap));
                 break;
         }
