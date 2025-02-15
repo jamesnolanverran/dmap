@@ -2,18 +2,18 @@
 
 ### **Dmap** is a lightweight, zero-friction dynamic hashmap implementation in C, designed to be user friendly without sacrificing performance.
 
-## 🚀 Super Easy – Zero Setup Required!
+## 🚀 Super Easy – Zero Setup Required
 
 ```c
 // Declare a dynamic hashmap – use any type
 int *my_dmap = NULL;
 
 // Insert a value using any key type
-int key_1 = 1;
-dmap_insert(my_dmap, &key_1, 42);   
+int key = 1;
+dmap_insert(my_dmap, &key, 42);
 
 // Retrieve the value
-int *value = dmap_get(my_dmap, &key_1);
+int *value = dmap_get(my_dmap, &key);
 
 ```
 - **No manual setup** → Just declare and use.  
@@ -34,11 +34,11 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 ---
 
 ## Performance
-- The library is designed for **ease of use** while maintaining strong performance. NOTE: Preallocate using dmap_init for highest performance!
+- The library is designed for **ease of use** while maintaining strong performance. NOTE: Preallocate large tables using dmap_init for best performance!
 
 ## Hash Collisions
-- The library stores **raw key bytes** for keys of primitive types. If a hash collision occurs keys are compared directly.  
-- For string and custom struct keys, **two 64-bit hashes** are stored instead of the full key. NOTE: While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible. Future versions will make improvements here.
+- The library stores **raw key bytes** for 1, 2, 4 and 8 bytes keys. If a hash collision occurs, keys are compared directly.  
+- For string and custom struct keys, **two 64-bit hashes** are stored instead of the key. While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible. Future versions will make improvements here.
 
 ## Memory Management
 The dmap and darr libs support two memory management models:
@@ -61,6 +61,7 @@ An optional initialization function allows switching between these models, as we
 - Currently 64-bit Only
 - Currently Not Thread-Safe
 - Untested on macOS
+- Rehashing the table is not yet optimized
 - Keys are not type-checked. Key sizes are compared at runtime but it is up to users to ensure key types are consistent.
 
 ## Also Includes:
