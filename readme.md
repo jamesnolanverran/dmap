@@ -34,7 +34,7 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 ---
 
 ## Performance
-- The library is designed for **ease of use** while maintaining strong performance.
+- The library is designed for **ease of use** while maintaining strong performance. NOTE: Preallocate using dmap_init for highest performance!
 
 ## Hash Collisions
 - The library stores **raw key bytes** for keys of primitive types. If an index collision occurs, keys are compared directly.  
