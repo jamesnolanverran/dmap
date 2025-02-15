@@ -265,6 +265,6 @@ int main() {
 [MIT License](LICENSE)
 
 ### Credits & Inspiration  
-*darr* is adapted from Per Vognsen's *Bitwise* series, which was itself influenced by Sean Barrett's [`stb_ds`](https://github.com/nothings/stb/blob/master/stb_ds.h) library. The approach inspired me to develop a similar approach for hashmaps with *dmap*.
+*darr* is adapted from Per Vognsen's dynamic array implementation on his *Bitwise* series, which was itself influenced by Sean Barrett's [`stb_ds`](https://github.com/nothings/stb/blob/master/stb_ds.h) library. The approach inspired me to develop a similar approach for hashmaps with *dmap*.
 
 [Per Vognsen's Bitwise series on YouTube](https://www.youtube.com/pervognsen).
