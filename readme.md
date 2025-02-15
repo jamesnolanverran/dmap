@@ -36,7 +36,6 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 
 ## Performance
 - The library is designed for **ease of use** while maintaining strong performance.
-- Benchmarks against uthash show that **dmap** performs faster and uses less memory in typical use cases.  
 
 ## Hash Collisions
 - The library stores **raw key bytes** for keys of primitive types. If an index collision occurs, keys are compared directly.  
