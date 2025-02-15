@@ -20,8 +20,8 @@ extern "C" {
 #define DATA_ALIGNMENT 16
 
 #define MAX_ARENA_CAPACITY (1024 * 1024 * 1024) 
-#define DARR_INITIAL_CAPACITY 64
-#define DMAP_INITIAL_CAPACITY 256
+#define DARR_INITIAL_CAPACITY 16
+#define DMAP_INITIAL_CAPACITY 16
 #define DARR_GROWTH_MULTIPLIER 2.0f
 #define DMAP_GROWTH_MULTIPLIER 2.0f
 #define DMAP_HASHTABLE_MULTIPLIER 1.6f
@@ -48,10 +48,10 @@ typedef struct AllocInfo {
 } AllocInfo;
 
 typedef struct DarrHdr { 
-    AllocInfo alloc_info; 
+    AllocInfo *alloc_info; 
+    unsigned int len;
+    unsigned int cap;
     AllocType alloc_type;
-    size_t len;
-    size_t cap;
     _Alignas(DATA_ALIGNMENT) char data[]; 
 } DarrHdr;
 
@@ -95,17 +95,16 @@ typedef enum {
 } KeyType;
 
 typedef struct DmapHdr {
-    AllocInfo alloc_info; 
-    AllocType alloc_type;
-    size_t len; 
-    size_t cap;
-    size_t hash_cap;
-    size_t returned_idx; // stores an index, used internally by macros
-    size_t key_size; // make sure key sizes are consistent
-    bool is_string;
-    size_t *free_list; // array of indices to values stored in data[] that have been marked as deleted. 
-    KeyType key_type;
+    AllocInfo *alloc_info; 
+    unsigned int len; 
+    unsigned int cap;
+    unsigned int hash_cap;
+    unsigned int returned_idx; // stores an index, used internally by macros
+    unsigned int key_size; // make sure key sizes are consistent
+    unsigned int *free_list; // array of indices to values stored in data[] that have been marked as deleted. 
     void *entries; // the actual hashtable - contains the hash and an index to data[] where the values are stored
+    KeyType key_type;
+    AllocType alloc_type;
     _Alignas(DATA_ALIGNMENT) char data[];  // aligned data array - where values are stored
 } DmapHdr;
 

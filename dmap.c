@@ -33,8 +33,8 @@
     #define assert(cond) ((void)0)
 #endif
 
-#define DMAP_EMPTY (SIZE_MAX)
-#define DMAP_DELETED (SIZE_MAX - 1)
+#define DMAP_EMPTY (UINT32_MAX)
+#define DMAP_DELETED (UINT32_MAX - 1)
 
 #ifndef MIN
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))
@@ -278,9 +278,11 @@ void darr__free(void *arr){
     switch (a->alloc_type) 
     {
         case ALLOC_VIRTUAL:
-            v_alloc_free(&a->alloc_info);
+            v_alloc_free(a->alloc_info);
+            free(a->alloc_info);
             break;
         case ALLOC_MALLOC:
+            free(a->alloc_info);
             free(a);
             break;
     }
@@ -294,18 +296,21 @@ void *darr__init(void *arr, size_t initial_capacity, size_t elem_size, AllocType
     DarrHdr *new_hdr = NULL;
     size_t new_cap = MAX(DARR_INITIAL_CAPACITY, initial_capacity); 
     size_t size_in_bytes = offsetof(DarrHdr, data) + (new_cap * elem_size);
-    AllocInfo alloc_info = {0};
+    AllocInfo *alloc_info = (AllocInfo*)malloc(sizeof(AllocInfo));
+    if(size_in_bytes > UINT32_MAX){
+        dmap_error_handler("Error: Max size exceeded\n");
+    }
     switch (alloc_type) 
     {
         case ALLOC_VIRTUAL:
             #if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
                 dmap_error_handler("ALLOC_VIRTUAL not supported on this platform; use ALLOC_MALLOC");
             #endif
-            if(!v_alloc_committ(&alloc_info, size_in_bytes)) {
+            if(!v_alloc_committ(alloc_info, size_in_bytes)) {
                 dmap_error_handler("Allocation failed");
             }
-            new_hdr = (DarrHdr*)alloc_info.base;
-            assert((size_t)(alloc_info.ptr - alloc_info.base) == offsetof(DarrHdr, data) + (new_cap * elem_size));
+            new_hdr = (DarrHdr*)alloc_info->base;
+            assert((size_t)(alloc_info->ptr - alloc_info->base) == offsetof(DarrHdr, data) + (new_cap * elem_size));
             break;
         case ALLOC_MALLOC:
             new_hdr = (DarrHdr*)malloc(size_in_bytes);
@@ -314,10 +319,12 @@ void *darr__init(void *arr, size_t initial_capacity, size_t elem_size, AllocType
             }
             break;
     }
-    new_hdr->alloc_info = alloc_info; // copy values
+
+
+    new_hdr->alloc_info = alloc_info; 
     new_hdr->alloc_type = alloc_type;
     new_hdr->len = 0;
-    new_hdr->cap = new_cap;
+    new_hdr->cap = (u32)new_cap;
 
     return new_hdr->data;
 }
@@ -328,13 +335,19 @@ void *darr__grow(void *arr, size_t elem_size) {
     }
     DarrHdr *dh = darr__hdr(arr);
     DarrHdr *new = NULL;
-    AllocInfo alloc_info = dh->alloc_info;
+    AllocInfo alloc_info = *dh->alloc_info;
     size_t old_cap = darr_cap(arr);
     switch (dh->alloc_type) 
     {
         case ALLOC_VIRTUAL: 
         {
             size_t additional_bytes = (size_t)((float)old_cap * (DARR_GROWTH_MULTIPLIER - 1.0f) * elem_size);
+
+            size_t total_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
+            size_t max_capacity = (size_t)UINT32_MAX;
+            if(total_size_in_bytes > max_capacity){
+                dmap_error_handler("Error: Max size exceeded\n");
+            }
             if(!v_alloc_committ(&alloc_info, additional_bytes)) {
                 dmap_error_handler("Allocation failed");
             }
@@ -343,7 +356,11 @@ void *darr__grow(void *arr, size_t elem_size) {
         }
         case ALLOC_MALLOC: 
         {
-            size_t new_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER); 
+            size_t new_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
+            size_t max_capacity = (size_t)UINT32_MAX;
+            if(new_size_in_bytes > max_capacity){
+                dmap_error_handler("Error: Max size exceeded\n");
+            }
             new = realloc(dh, new_size_in_bytes);
             if(!new) {
                 dmap_error_handler("Out of memory 5");
@@ -351,8 +368,8 @@ void *darr__grow(void *arr, size_t elem_size) {
             break;
         }
     }
-    new->alloc_info = alloc_info;
-    new->cap += old_cap;
+    *new->alloc_info = alloc_info;
+    new->cap += (u32)old_cap;
     assert(((size_t)&new->data & (DATA_ALIGNMENT - 1)) == 0); // Ensure alignment
     return &new->data;
 }
@@ -371,14 +388,14 @@ typedef struct {
 typedef struct {
     u64 hash;
     u64 key;
-    u64 data_idx;
+    u32 data_idx;
 } DmapEntry_U64;
 
 // string and > 8 bytes
 typedef struct {
     u64 hash;
     u64 rehash;
-    u64 data_idx;
+    u32 data_idx;
 } DmapEntry_STR;
 
 // declare hash function
@@ -398,7 +415,7 @@ static inline void* get_entry(void *entries, size_t idx, KeyType key_type) {
     }
     return NULL;
 }
-static size_t get_data_index(void *entries, size_t idx, KeyType key_type) {
+static u32 get_data_index(void *entries, size_t idx, KeyType key_type) {
     void *entry = get_entry(entries, idx, key_type);
     switch (key_type) {
         case DMAP_U32: return ((DmapEntry_U32*)entry)->data_idx;
@@ -407,15 +424,15 @@ static size_t get_data_index(void *entries, size_t idx, KeyType key_type) {
         case DMAP_UNINITIALIZED:
         default:
             dmap_error_handler("Invalid KeyType in get_data_index.");
-            return UINT64_MAX;  
+            return UINT32_MAX;  
     }
 }
 static void mark_index_empty(void *entries, size_t entry_index, KeyType key_type) {
     void *entry = get_entry(entries, entry_index, key_type);
     switch (key_type) {
         case DMAP_U32: ((DmapEntry_U32*)entry)->data_idx = UINT32_MAX; break;
-        case DMAP_U64: ((DmapEntry_U64*)entry)->data_idx = UINT64_MAX; break;
-        case DMAP_STR: ((DmapEntry_STR*)entry)->data_idx = UINT64_MAX; break;
+        case DMAP_U64: ((DmapEntry_U64*)entry)->data_idx = UINT32_MAX; break;
+        case DMAP_STR: ((DmapEntry_STR*)entry)->data_idx = UINT32_MAX; break;
         case DMAP_UNINITIALIZED:
         default:
             dmap_error_handler("Invalid KeyType in mark_index_empty.");
@@ -425,8 +442,8 @@ static void mark_index_deleted(void *entries, size_t entry_index, KeyType key_ty
     void *entry = get_entry(entries, entry_index, key_type);
     switch (key_type) {
         case DMAP_U32: ((DmapEntry_U32*)entry)->data_idx = UINT32_MAX - 1; break;
-        case DMAP_U64: ((DmapEntry_U64*)entry)->data_idx = UINT64_MAX - 1; break;
-        case DMAP_STR: ((DmapEntry_STR*)entry)->data_idx = UINT64_MAX - 1; break;
+        case DMAP_U64: ((DmapEntry_U64*)entry)->data_idx = UINT32_MAX - 1; break;
+        case DMAP_STR: ((DmapEntry_STR*)entry)->data_idx = UINT32_MAX - 1; break;
         case DMAP_UNINITIALIZED:
         default:
             dmap_error_handler("Invalid KeyType in mark_index_deleted.");
@@ -436,8 +453,8 @@ static bool entry_is_empty(void *entries, size_t i, KeyType key_type) {
     void *entry = get_entry(entries, i, key_type);
     switch (key_type) {
         case DMAP_U32: return ((DmapEntry_U32*)entry)->data_idx == UINT32_MAX;
-        case DMAP_U64: return ((DmapEntry_U64*)entry)->data_idx == UINT64_MAX;
-        case DMAP_STR: return ((DmapEntry_STR*)entry)->data_idx == UINT64_MAX;
+        case DMAP_U64: return ((DmapEntry_U64*)entry)->data_idx == UINT32_MAX;
+        case DMAP_STR: return ((DmapEntry_STR*)entry)->data_idx == UINT32_MAX;
         case DMAP_UNINITIALIZED:
         default:
             return false;
@@ -447,8 +464,8 @@ static bool entry_is_deleted(void *entries, size_t i, KeyType key_type) {
     void *entry = get_entry(entries, i, key_type);
     switch (key_type) {
         case DMAP_U32: return ((DmapEntry_U32*)entry)->data_idx == (UINT32_MAX - 1);
-        case DMAP_U64: return ((DmapEntry_U64*)entry)->data_idx == (UINT64_MAX - 1);
-        case DMAP_STR: return ((DmapEntry_STR*)entry)->data_idx == (UINT64_MAX - 1);
+        case DMAP_U64: return ((DmapEntry_U64*)entry)->data_idx == (UINT32_MAX - 1);
+        case DMAP_STR: return ((DmapEntry_STR*)entry)->data_idx == (UINT32_MAX - 1);
         case DMAP_UNINITIALIZED:
         default:
             return false;
@@ -458,8 +475,8 @@ static bool entry_is_empty_or_deleted(void *entries, size_t i, KeyType key_type)
     void *entry = get_entry(entries, i, key_type);
     switch (key_type) {
         case DMAP_U32: return ((DmapEntry_U32*)entry)->data_idx == UINT32_MAX || ((DmapEntry_U32*)entry)->data_idx == (UINT32_MAX - 1);
-        case DMAP_U64: return ((DmapEntry_U64*)entry)->data_idx == UINT64_MAX || ((DmapEntry_U64*)entry)->data_idx == (UINT64_MAX - 1);
-        case DMAP_STR: return ((DmapEntry_STR*)entry)->data_idx == UINT64_MAX || ((DmapEntry_STR*)entry)->data_idx == (UINT64_MAX - 1);
+        case DMAP_U64: return ((DmapEntry_U64*)entry)->data_idx == UINT32_MAX || ((DmapEntry_U64*)entry)->data_idx == (UINT32_MAX - 1);
+        case DMAP_STR: return ((DmapEntry_STR*)entry)->data_idx == UINT32_MAX || ((DmapEntry_STR*)entry)->data_idx == (UINT32_MAX - 1);
         case DMAP_UNINITIALIZED:
         default:
             return false;
@@ -477,11 +494,11 @@ static void store_entry_data(void *entries, size_t entry_index, void *key, size_
             break;
         case DMAP_U64:
             ((DmapEntry_U64*)entry)->hash = hash;
-            ((DmapEntry_U64*)entry)->data_idx = (u64)data_index;
+            ((DmapEntry_U64*)entry)->data_idx = (u32)data_index;
             memcpy(&((DmapEntry_U64*)entry)->key, key, sizeof(u64));
             break;
         case DMAP_STR:
-            ((DmapEntry_STR*)entry)->data_idx = data_index;
+            ((DmapEntry_STR*)entry)->data_idx = (u32)data_index;
             ((DmapEntry_STR*)entry)->hash = hash;
             ((DmapEntry_STR*)entry)->rehash = dmap_fnv_64(key, key_size, hash);
             break;
@@ -636,13 +653,18 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     DmapHdr *dh = dmap__hdr(dmap);
     
     DmapHdr *new_hdr = NULL;
-    AllocInfo alloc_info = dh->alloc_info;
+    AllocInfo alloc_info = *dh->alloc_info;
     size_t old_cap = dmap_cap(dmap);
     switch (dh->alloc_type) 
     {
         case ALLOC_VIRTUAL: 
         {
             size_t additional_bytes = (size_t)((float)old_cap * (DMAP_GROWTH_MULTIPLIER - 1.0f) * elem_size);
+            size_t total_size_in_bytes = offsetof(DmapHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
+            size_t max_capacity = (size_t)UINT32_MAX;
+            if(total_size_in_bytes > max_capacity){
+                dmap_error_handler("Error: Max size exceeded\n");
+            }
             if(!v_alloc_committ(&alloc_info, additional_bytes)) {
                 dmap_error_handler("Allocation failed");
             }
@@ -651,7 +673,11 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
         }
         case ALLOC_MALLOC: 
         {
-            size_t new_size_in_bytes = offsetof(DmapHdr, data) + (size_t)((float)old_cap * (float)elem_size * DMAP_GROWTH_MULTIPLIER); // double capacity
+            size_t new_size_in_bytes = offsetof(DmapHdr, data) + (size_t)((float)old_cap * (float)elem_size * DMAP_GROWTH_MULTIPLIER); 
+            size_t max_capacity = (size_t)UINT32_MAX;
+            if(new_size_in_bytes > max_capacity){
+                dmap_error_handler("Error: Max size exceeded\n");
+            }
             new_hdr = realloc(dh, new_size_in_bytes);
             if(!new_hdr) {
                 dmap_error_handler("Out of memory 2");
@@ -659,13 +685,13 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
             break;
         }
     }
-    new_hdr->alloc_info = alloc_info;
+    *new_hdr->alloc_info = alloc_info;
     new_hdr->cap = (size_t)((float)old_cap * DMAP_GROWTH_MULTIPLIER);
 
     size_t new_hash_cap = (size_t)((float)new_hdr->cap * DMAP_HASHTABLE_MULTIPLIER); 
     size_t old_hash_cap = new_hdr->hash_cap;
 
-    new_hdr->hash_cap = new_hash_cap;
+    new_hdr->hash_cap = (u32)new_hash_cap;
     // grow the entries to fit into the newly allocated space
     dmap_grow_entries(new_hdr->data, new_hash_cap, old_hash_cap); 
 
@@ -680,17 +706,17 @@ static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t ele
     DmapHdr *new_hdr = NULL;
     initial_capacity = MAX(DMAP_INITIAL_CAPACITY, initial_capacity); 
     size_t size_in_bytes = offsetof(DmapHdr, data) + (initial_capacity * elem_size);
-    AllocInfo alloc_info = {0};
+    AllocInfo *alloc_info = (AllocInfo*)malloc(sizeof(AllocInfo));
     switch (alloc_type) 
     {
         case ALLOC_VIRTUAL:
             #if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
                 dmap_error_handler("ALLOC_VIRTUAL not supported on this platform; use ALLOC_MALLOC");
             #endif
-            if(!v_alloc_committ(&alloc_info, size_in_bytes)) {
+            if(!v_alloc_committ(alloc_info, size_in_bytes)) {
                 dmap_error_handler("Allocation failed");
             }
-            new_hdr = (DmapHdr*)alloc_info.base;
+            new_hdr = (DmapHdr*)alloc_info->base;
         break;
         case ALLOC_MALLOC:
             new_hdr = (DmapHdr*)malloc(size_in_bytes);
@@ -702,16 +728,15 @@ static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t ele
     new_hdr->alloc_info = alloc_info;
     new_hdr->alloc_type = alloc_type;
     new_hdr->len = 0;
-    new_hdr->cap = initial_capacity;
+    new_hdr->cap = (u32)initial_capacity;
     new_hdr->hash_cap = (size_t)((float)initial_capacity * DMAP_HASHTABLE_MULTIPLIER);
     new_hdr->returned_idx = DMAP_EMPTY;
-    new_hdr->is_string = is_string;
     new_hdr->entries = NULL;
     new_hdr->free_list = NULL;
     new_hdr->key_type = DMAP_UNINITIALIZED;
     new_hdr->key_size = 0;
 
-    if(new_hdr->is_string){
+    if(is_string){
         new_hdr->key_type = DMAP_STR;
     }
     else {
@@ -756,9 +781,11 @@ void dmap__free(void *dmap){
         switch (d->alloc_type) 
         {
             case ALLOC_VIRTUAL:
-                v_alloc_free(&d->alloc_info);
+                v_alloc_free(d->alloc_info);
+                free(d->alloc_info);
                 break;
             case ALLOC_MALLOC:
+                free(d->alloc_info);
                 free(dmap__hdr(dmap));
                 break;
         }
@@ -778,18 +805,18 @@ void dmap_clear(void *dmap){
 }
 void dmap__insert_entry(void *dmap, void *key, size_t key_size){ 
     DmapHdr *d = dmap__hdr(dmap);
-    if(d->key_type == DMAP_UNINITIALIZED){
+    if(d->key_type == DMAP_UNINITIALIZED){ // todo: should not go here
         d->key_type = determine_key_type(key_size, d->cap);
     }
     if(d->key_size == 0){ 
         if(d->key_type == DMAP_STR) 
-            d->key_size = UINT64_MAX; // strings
+            d->key_size = UINT32_MAX; // strings
         else 
-            d->key_size = key_size;
+            d->key_size = (u32)key_size;
     }
-    else if(d->key_size != key_size && d->key_size != UINT64_MAX){
+    else if(d->key_size != key_size && d->key_size != UINT32_MAX){
         char err[128];
-        snprintf(err, 128, "Key is not the correct type, it should be %zu bytes, but is %zu bytes.\n", d->key_size, key_size);
+        snprintf(err, 128, "Key is not the correct type, it should be %u bytes, but is %zu bytes.\n", d->key_size, key_size);
         dmap_error_handler(err);
     }
     // get a fresh data slot
@@ -830,18 +857,9 @@ bool dmap__find_data_idx(void *dmap, void *key, size_t key_size){
         return false;
     }
     DmapHdr *d = dmap__hdr(dmap);
-    if(d->key_type == DMAP_UNINITIALIZED){
-        d->key_type = determine_key_type(key_size, d->cap);
-    }
-    if(d->key_size == 0){ 
-        if(d->key_type == DMAP_STR) 
-            d->key_size = UINT64_MAX; // strings
-        else 
-            d->key_size = key_size;
-    }
-    if(d->key_size != key_size && d->key_size != UINT64_MAX){
+    if(d->key_size != key_size && d->key_size != UINT32_MAX){
         char err[128];
-        snprintf(err, 128, "GET: Key is not the correct type, it should be %zu bytes, but is %zu bytes.\n", d->key_size, key_size);
+        snprintf(err, 128, "GET: Key is not the correct type, it should be %u bytes, but is %zu bytes.\n", d->key_size, key_size);
         dmap_error_handler(err);
     }
     size_t idx = dmap__get_entry_index(dmap, key, key_size);
@@ -851,7 +869,7 @@ bool dmap__find_data_idx(void *dmap, void *key, size_t key_size){
     d->returned_idx = get_data_index(d->entries, idx, d->key_type);
     return true;
 }
-// returns: size_t - The index of the data associated with the key, or DMAP_EMPTY (SIZE_MAX) if the key is not found
+// returns: size_t - The index of the data associated with the key, or DMAP_EMPTY (UINT32_MAX) if the key is not found
 size_t dmap__get_idx(void *dmap, void *key, size_t key_size){
     size_t idx = dmap__get_entry_index(dmap, key, key_size);
     if(idx == DMAP_EMPTY) {
@@ -867,7 +885,7 @@ size_t dmap__delete(void *dmap, void *key, size_t key_size){
         return DMAP_EMPTY;
     }
     DmapHdr *d = dmap__hdr(dmap);
-    size_t data_index = get_data_index(d->entries, idx, d->key_type);
+    u32 data_index = get_data_index(d->entries, idx, d->key_type);
     mark_index_deleted(d->entries, idx, d->key_type);
     darr_push(d->free_list, data_index);
     d->len -= 1; 
@@ -885,12 +903,13 @@ size_t dmap_range(void *dmap){
 } 
 
 // hash function:
-static u64 dmap_fnv_64(void *buf, size_t len, u64 hval) { // fnv_64a
+static u64 dmap_fnv_64(void *buf, size_t len, u64 hval) { // fnv_64a unsigned char *bp = (unsigned char *)buf;
     unsigned char *bp = (unsigned char *)buf;
     unsigned char *be = bp + len;
     while (bp < be) {
         hval ^= (u64)*bp++;
-        hval += (hval << 1) + (hval << 4) + (hval << 5) + (hval << 7) + (hval << 8) + (hval << 40);
+        hval *= 0x100000001b3ULL;
+        // hval += (hval << 1) + (hval << 4) + (hval << 5) + (hval << 7) + (hval << 8) + (hval << 40);
     }
     return hval;
 }
