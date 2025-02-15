@@ -35,17 +35,14 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 ---
 
 ## Performance
-- The library is designed for **ease of use** while maintaining strong performance. However, it prioritizes flexibility over raw speed.  
+- The library is designed for **ease of use** while maintaining strong performance.
 - Benchmarks against uthash show that **dmap** performs faster and uses less memory in typical use cases.  
 
-## Design Considerations
-
-### Hash Collisions
-- The library stores **raw key bytes** for keys of size **1, 2, 4, and 8 bytes**. If an index collision occurs, keys are compared directly.  
-- For string and custom struct keys, **two 64-bit hashes** are stored instead of the full key. NOTE: While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible. Still looking at other options.
+## Hash Collisions
+- The library stores **raw key bytes** for keys of primitive types. If an index collision occurs, keys are compared directly.  
+- For string and custom struct keys, **two 64-bit hashes** are stored instead of the full key. NOTE: While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible. Future versions will make improvements here.
 
 ## Memory Management
-
 The dmap and darr libs support two memory management models:
 
 1. **Malloc/Realloc Model**:  
@@ -57,7 +54,7 @@ The dmap and darr libs support two memory management models:
 
 An optional initialization function allows switching between these models.
 
-### Error Handling
+## Error Handling
 - By default, memory allocation failures trigger an error and exit().
 - A custom error handler can be set using `dmap_set_error_handler` to handle allocation failures gracefully.
 
