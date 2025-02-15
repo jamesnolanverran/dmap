@@ -590,7 +590,7 @@ static void set_new_index(void *new_entries, void *old_entries, size_t idx, size
         memcpy(new_entry, old_entry, entry_size);
     }
 }
-static KeyType determine_initial_config(size_t key_size, size_t initial_capacity) {
+static KeyType determine_key_type(size_t key_size, size_t initial_capacity) {
     // Determine key size (assume <=8 bytes are stored directly)
     if (key_size == 1 || key_size == 2 || key_size == 4) { // u8, u16, u32
         if (initial_capacity <= UINT32_MAX - 2) return DMAP_U32; 
@@ -779,7 +779,7 @@ void dmap_clear(void *dmap){
 void dmap__insert_entry(void *dmap, void *key, size_t key_size){ 
     DmapHdr *d = dmap__hdr(dmap);
     if(d->key_type == DMAP_UNINITIALIZED){
-        d->key_type = determine_initial_config(key_size, d->cap);
+        d->key_type = determine_key_type(key_size, d->cap);
     }
     if(d->key_size == 0){ 
         if(d->key_type == DMAP_STR) 
@@ -788,7 +788,9 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size){
             d->key_size = key_size;
     }
     else if(d->key_size != key_size && d->key_size != UINT64_MAX){
-        dmap_error_handler("Key is not the correct type");
+        char err[128];
+        snprintf(err, 128, "Key is not the correct type, it should be %zu bytes, but is %zu bytes.\n", d->key_size, key_size);
+        dmap_error_handler(err);
     }
     // get a fresh data slot
     d->returned_idx = darr_len(d->free_list) ? darr_pop(d->free_list) : d->len;
@@ -828,8 +830,19 @@ bool dmap__find_data_idx(void *dmap, void *key, size_t key_size){
         return false;
     }
     DmapHdr *d = dmap__hdr(dmap);
-    if(d->key_size != UINT64_MAX && d->key_size != key_size){
-        dmap_error_handler("GET: Key is not the correct type");
+    if(d->key_type == DMAP_UNINITIALIZED){
+        d->key_type = determine_key_type(key_size, d->cap);
+    }
+    if(d->key_size == 0){ 
+        if(d->key_type == DMAP_STR) 
+            d->key_size = UINT64_MAX; // strings
+        else 
+            d->key_size = key_size;
+    }
+    if(d->key_size != key_size && d->key_size != UINT64_MAX){
+        char err[128];
+        snprintf(err, 128, "GET: Key is not the correct type, it should be %zu bytes, but is %zu bytes.\n", d->key_size, key_size);
+        dmap_error_handler(err);
     }
     size_t idx = dmap__get_entry_index(dmap, key, key_size);
     if(idx == DMAP_EMPTY) { 
