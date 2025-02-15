@@ -59,7 +59,7 @@ An optional initialization function allows switching between these models.
 
 ### Hash Collisions
 - The library stores **raw key bytes** for keys of size **1, 2, 4, and 8 bytes**. If an index collision occurs, keys are compared directly.  
-- For **string keys** and **keys of other sizes (e.g., structs)**, the library stores **two 64-bit hashes**. A match is determined by comparing both hash values.  
+- For string and custom struct keys, **two 64-bit hashes** are stored instead of the full key. NOTE: While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible. Still looking at other options.
 
 ### Error Handling
 - By default, memory allocation failures trigger an error and exit().
@@ -73,7 +73,6 @@ An optional initialization function allows switching between these models.
 - Currently Not Thread-Safe
 - Untested on macOS
 - Keys are not type-checked. Key sizes are compared at runtime but it is up to users to ensure key types are consistent.
-- For string and custom struct keys, **two 64-bit hashes** are stored instead of the full key. While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible.
 
 ## Also Includes:
 
