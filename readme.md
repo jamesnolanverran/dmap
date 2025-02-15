@@ -5,7 +5,7 @@
 ## 🚀 Super Easy – Zero Setup Required!
 
 ```c
-// Declare a dynamic hashmap – use any type!
+// Declare a dynamic hashmap – use any type
 int *my_dmap = NULL;
 
 // Insert a value using any key type
@@ -68,8 +68,6 @@ An optional initialization function allows switching between these models, as we
 - **darr** – A dynamic array implementation with dynamic typing.
 - **v_alloc** – A cross-platform reserve/commit-style arena allocator.
 
----
-
 ## Full Example: Dmap Usage
 
 ```c
@@ -101,8 +99,8 @@ int main() {
     // Use a C-string as key
     char *str_key = "my_key";
 
-    // Optional: Initialize the key-string hashmap with custom settings
-    // dmap_str_init(my_dmap, 256, ALLOC_MALLOC); 
+    // Optional: Initialize the key-string hashmap for best performance
+    dmap_str_init(my_dmap, 1024 * 1024, ALLOC_MALLOC); 
     // Insert a value using a string key
     dmap_kstr_insert(my_str_dmap, str_key, 33, strlen(str_key)); // string keys need length param
 

@@ -89,8 +89,6 @@ void darr__free(void *a);
 // /////////////////////////////////////////////
 typedef enum {
     DMAP_UNINITIALIZED = 0,  // Unused/default state
-    DMAP_U8,   // 8-bit keys
-    DMAP_U16,  // 16-bit keys
     DMAP_U32,  // 32-bit keys
     DMAP_U64,  // 64-bit keys
     DMAP_STR   // String keys (hashed)
