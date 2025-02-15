@@ -16,7 +16,6 @@ dmap_insert(my_dmap, &key_1, 42);
 int *value = dmap_get(my_dmap, &key_1);
 
 ```
-
 - **No manual setup** → Just declare and use.  
 - **Dynamic value storage** → Supports any value type without explicit casting.  
 - **Flexible key types** → Works with integers, strings, and more.  
@@ -83,8 +82,8 @@ int main() {
     // Declare a dynamic hashmap (can store any type)
     int *my_dmap = NULL;
 
-    // Optional: Initialize the hashmap with custom settings
-    // dmap_init(my_dmap, 256, ALLOC_MALLOC);
+    // Optional: Initialize the hashmap with an initial capacity
+    dmap_init(my_dmap, 1024 * 1024, ALLOC_MALLOC); //   <--- esential for high performance for large tables!
     // Insert values into the hashmap using integer keys
     int key_1 = 1;
     int key_2 = 2;

@@ -392,14 +392,12 @@ typedef struct {
 
 // declare hash function
 static u64 dmap_fnv_64(void *buf, size_t len, u64 hval);
-static u64 dmap_wang_64(void *buf, size_t len, u64 hval);
 
 static u64 dmap_generate_hash(void *key, size_t key_size, u64 seed) {
-    // return dmap_fnv_64(key, key_size, seed);
     return dmap_fnv_64(key, key_size, seed);
 }
 // return a void* to entry
-static void* get_entry(void *entries, size_t idx, KeyType key_type) {
+static inline void* get_entry(void *entries, size_t idx, KeyType key_type) {
     switch (key_type) {
         case DMAP_U8:  return &((DmapEntry_U8 *)entries)[idx];
         case DMAP_U16: return &((DmapEntry_U16 *)entries)[idx];
@@ -412,6 +410,18 @@ static void* get_entry(void *entries, size_t idx, KeyType key_type) {
     return NULL;
 }
 static void set_data_index(void *entries, size_t entry_index, size_t data_index, KeyType key_type) {
+    switch (key_type) {
+        case DMAP_U8:  ((DmapEntry_U8 *)entries)[entry_index].data_idx  = (u8)data_index;  break;
+        case DMAP_U16: ((DmapEntry_U16*)entries)[entry_index].data_idx  = (u16)data_index; break;
+        case DMAP_U32: ((DmapEntry_U32*)entries)[entry_index].data_idx = (u32)data_index; break;
+        case DMAP_U64: ((DmapEntry_U64*)entries)[entry_index].data_idx = (u64)data_index; break;
+        case DMAP_STR: ((DmapEntry_STR*)entries)[entry_index].data_idx = (u64)data_index; break;
+        case DMAP_UNINITIALIZED:
+        default:
+            dmap_error_handler("Invalid KeyType in set_data_index.");
+    }
+}
+static void set_data_index2(void *entries, size_t entry_index, size_t data_index, KeyType key_type) {
     void *data_ptr = get_entry(entries, entry_index, key_type);
     switch (key_type) {
         case DMAP_U8:  ((DmapEntry_U8*)data_ptr)->data_idx  = (u8)data_index;  break;
@@ -503,6 +513,7 @@ static bool entry_is_empty_or_deleted(void *entries, size_t i, KeyType key_type)
             return false;
     }
 }
+
 static void copy_key_to_entry(void *entries, size_t entry_index, void *key, size_t key_size, u64 hash, KeyType key_type) {
     void *entry = get_entry(entries, entry_index, key_type);
     switch (key_type) {
@@ -520,6 +531,27 @@ static void copy_key_to_entry(void *entries, size_t entry_index, void *key, size
     }
 }
 static bool keys_match(void *entries, size_t idx, void *key, size_t key_size, KeyType key_type) {
+    void *entry = get_entry(entries, idx, key_type);
+    bool is_aligned = (((uintptr_t)key | (uintptr_t)entry) & (key_size - 1)) == 0;
+
+    if (key_type == DMAP_STR) {
+        DmapEntry_STR *str_entry = (DmapEntry_STR*)entry;
+        u64 hash = dmap_fnv_64(key, key_size, 1333);
+        u64 rehash = dmap_fnv_64(key, key_size, str_entry->hash);
+        return str_entry->hash == hash && str_entry->rehash == rehash;
+    }
+
+    switch (key_size) {
+        case 1: return is_aligned ? (*(u8*)key  == *(u8*)entry)  : memcmp(key, entry, 1)  == 0;
+        case 2: return is_aligned ? (*(u16*)key == *(u16*)entry) : memcmp(key, entry, 2)  == 0;
+        case 4: return is_aligned ? (*(u32*)key == *(u32*)entry) : memcmp(key, entry, 4)  == 0;
+        case 8: return is_aligned ? (*(u64*)key == *(u64*)entry) : memcmp(key, entry, 8)  == 0;
+    }
+
+    return false;  // Should never reach here
+}
+
+static bool keys_match2(void *entries, size_t idx, void *key, size_t key_size, KeyType key_type) {
     void *entry = get_entry(entries, idx, key_type);
 
     switch (key_type) {
@@ -719,23 +751,6 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     return new_hdr->data; // return the aligned data pointer
 }
 
-// grows the hashmap to a new capacity
-void *dmap__kstr_grow(void *dmap, size_t elem_size) {
-    if (!dmap) {
-        // when this is the case we just want the defaults
-        AllocType alloc_type = ALLOC_MALLOC;
-        return dmap__kstr_init(dmap, 0, elem_size, alloc_type);
-    }
-    return dmap__grow_internal(dmap, elem_size);
-}
-void *dmap__grow(void *dmap, size_t elem_size) {
-    if (!dmap) {
-        // when this is the case we just want the defaults
-        AllocType alloc_type = ALLOC_MALLOC;
-        return dmap__init(dmap, 0, elem_size, alloc_type);
-    }
-    return dmap__grow_internal(dmap, elem_size);
-}
 static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t elem_size, AllocType alloc_type, bool is_string){
     if(dmap) {
         dmap_error_handler("dmap_init: dmap already initialized, argument must be null");
@@ -790,6 +805,23 @@ void *dmap__kstr_init(void *dmap, size_t initial_capacity, size_t elem_size, All
 void *dmap__init(void *dmap, size_t initial_capacity, size_t elem_size, AllocType alloc_type){
     return dmap__init_internal(dmap, initial_capacity, elem_size, alloc_type, false);
 }
+// grows the hashmap to a new capacity
+void *dmap__kstr_grow(void *dmap, size_t elem_size) {
+    if (!dmap) {
+        // when this is the case we just want the defaults
+        AllocType alloc_type = ALLOC_MALLOC;
+        return dmap__kstr_init(dmap, 0, elem_size, alloc_type);
+    }
+    return dmap__grow_internal(dmap, elem_size);
+}
+void *dmap__grow(void *dmap, size_t elem_size) {
+    if (!dmap) {
+        // when this is the case we just want the defaults
+        AllocType alloc_type = ALLOC_MALLOC;
+        return dmap__init(dmap, 0, elem_size, alloc_type);
+    }
+    return dmap__grow_internal(dmap, elem_size);
+}
 void dmap__free(void *dmap){
     DmapHdr *d = dmap__hdr(dmap);
     if(d){
@@ -833,7 +865,7 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size){
         else 
             d->key_size = key_size;
     }
-    else if(d->key_size != UINT64_MAX && d->key_size != key_size){
+    else if(d->key_size != key_size && d->key_size != UINT64_MAX){
         dmap_error_handler("Key is not the correct type");
     }
     // get a fresh data slot
@@ -926,22 +958,6 @@ static u64 dmap_fnv_64(void *buf, size_t len, u64 hval) { // fnv_64a
         hval ^= (u64)*bp++;
         hval += (hval << 1) + (hval << 4) + (hval << 5) + (hval << 7) + (hval << 8) + (hval << 40);
     }
-    return hval;
-}
-static u64 dmap_wang_64(void *buf, size_t len, u64 hval) {
-    unsigned char *p = (unsigned char *)buf;
-    
-    // Mix input bytes into hval (similar to FNV-1a style XOR processing)
-    for (size_t i = 0; i < len; i++) {
-        hval ^= (u64)p[i];
-        hval *= 0x100000001b3ULL;  // Standard FNV-1a prime
-    }
-
-    // Apply Wang's hash final mixing for better bit diffusion
-    hval = (hval ^ (hval >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    hval = (hval ^ (hval >> 27)) * 0x94d049bb133111ebULL;
-    hval = hval ^ (hval >> 31);
-
     return hval;
 }
 
