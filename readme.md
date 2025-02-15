@@ -2,11 +2,25 @@
 
 ### **Dmap** is a lightweight, zero-friction dynamic hashmap implementation in C, designed to be user friendly without sacrificing performance.
 
-## Includes:
+## 🚀 Super Easy – Zero Setup Required!
 
-- **dmap** – A dynamic hashmap implementation with dynamic typing.
-- **darr** – A dynamic array implementation with dynamic typing.
-- **v_alloc** – A cross-platform reserve/commit-style arena allocator.
+```c
+// Declare a dynamic hashmap – use any type!
+int *my_dmap = NULL;
+
+// Insert a value using any key type
+int key_1 = 1;
+dmap_insert(my_dmap, &key_1, 42);   
+
+// Retrieve the value
+int *value = dmap_get(my_dmap, &key_1);
+
+```
+
+- **No manual setup** → Just declare and use.  
+- **Dynamic value storage** → Supports any value type without explicit casting.  
+- **Flexible key types** → Works with integers, structs, and more.  
+- **Automatic memory management** → Grows dynamically as needed.  
 
 Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS support is untested.)
 
@@ -23,8 +37,8 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 ---
 
 ## Performance
-- The library is designed for **ease of use** without sacrificing performance.
-- Benchmarked against uthash, **dmap** performs 2-3× faster for insertions and uses 2-7× less memory.
+- The library is designed for **ease of use** while maintaining strong performance. However, it prioritizes flexibility over raw speed.  
+- Benchmarks against uthash show that **dmap** performs faster and uses less memory in typical use cases.  
 
 ## Memory Management
 
@@ -41,7 +55,34 @@ An optional initialization function allows switching between these models.
 
 ---
 
-## Example Dmap Usage
+## Design Considerations
+
+### Hash Collisions
+- The library stores **raw key bytes** for keys of size **1, 2, 4, and 8 bytes**. If an index collision occurs, keys are compared directly.  
+- For **string keys** and **keys of other sizes (e.g., structs)**, the library stores **two 64-bit hashes**. A match is determined by comparing both hash values.  
+
+### Error Handling
+- By default, memory allocation failures trigger an error and exit().
+- A custom error handler can be set using `dmap_set_error_handler` to handle allocation failures gracefully.
+
+---
+
+## Limitations
+
+- Currently 64-bit Only
+- Currently Not Thread-Safe
+- Untested on macOS
+- Keys are not type-checked. Key sizes are compared at runtime but it is up to users to ensure key types are consistent.
+- For string and custom struct keys, **two 64-bit hashes** are stored instead of the full key. While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible.
+
+## Also Includes:
+
+- **darr** – A dynamic array implementation with dynamic typing.
+- **v_alloc** – A cross-platform reserve/commit-style arena allocator.
+
+---
+
+## Full Example Dmap Usage
 
 ```c
 #include "dmap.h"
@@ -55,49 +96,62 @@ int main() {
 
     // Optional: Initialize the hashmap with custom settings
     // dmap_init(my_dmap, 256, ALLOC_MALLOC);
-
     // Insert values into the hashmap using integer keys
     int key_1 = 1;
     int key_2 = 2;
     dmap_insert(my_dmap, &key_1, 42);   
     dmap_insert(my_dmap, &key_2, 13);   
 
-    // Retrieve a value using an integer key
+    // Retrieve a *value using an integer key
     int *value = dmap_get(my_dmap, &key_1);
     if (value) {
         printf("Value for key_1 1: %d\n", *value);  
     }
-
+    // ================================
+    // declare a hashmap that uses strings as keys
+    int *my_str_dmap = NULL;
     // Use a C-string as key
     char *str_key = "my_key";
 
+    // Optional: Initialize the key-string hashmap with custom settings
+    // dmap_str_init(my_dmap, 256, ALLOC_MALLOC); 
     // Insert a value using a string key
-    dmap_kstr_insert(my_dmap, str_key, 33, strlen(str_key)); // string keys need length param
+    dmap_kstr_insert(my_str_dmap, str_key, 33, strlen(str_key)); // string keys need length param
 
     // Retrieve a value using a string key
-    value = dmap_kstr_get(my_dmap, str_key, strlen(str_key));
+    value = dmap_kstr_get(my_str_dmap, str_key, strlen(str_key));
     if (value) {
         printf("Value for key 'str_key': %d\n", *value);  
     }
+    // ================================
+    // Get an index
+    // Retrieve an index to a value using an integer key
+    size_t idx = dmap_get_idx(my_dmap, &key_1);
+    if (idx != DMAP_INVALID) {
+        printf("Index based result for key_1: %d\n", my_dmap[idx]);  
+    }
+
+    // ================================
+    // Deletions
 
     // Delete a key from the hashmap
     size_t deleted_index = dmap_delete(my_dmap, &key_2);
     if (deleted_index != DMAP_EMPTY) {
         printf("Deleted key_2, data index: %zu\n", deleted_index);  
-
         // Mark the deleted entry as invalid for safe iteration
         // If we intend to iterate over the data array directly, we need to indicate that deleted data is invalid.
         // Here, we use -1 to represent an invalid state.
         my_dmap[deleted_index] = -1;
     }
-
     // Check if a key exists after deletion
     value = dmap_get(my_dmap, &key_2);
     if (!value) {
         printf("key_2 no longer exists in the hashmap.\n");  
     }
 
-    // Iterate over the hashmap
+    // ================================
+    // Iterate over the hashmap data - treat it like an array
+
     // Get the range of valid data indices (including deleted slots)
     size_t range = dmap_range(my_dmap);
     printf("hashmap data array range: %zu\n", range);  
@@ -115,27 +169,6 @@ int main() {
     return 0;
 }
 ```
-## Design Considerations
-
-### Hash Collisions
-- The library uses **128-bit Murmur3 hashes** and does not store original keys. As a result, it does not handle hash collisions internally.
-- The probability of a collision with a 128-bit hash is extremely low (e.g., less than 1 in 10^18 for 1 trillion keys). For most use cases, this is negligible.
-- If collision handling is required, users can bundle the hash key with the value in a struct and implement their own collision resolution logic.
-
-### Error Handling
-- By default, memory allocation failures trigger an error and exit().
-- A custom error handler can be set using `dmap_set_error_handler` to handle allocation failures gracefully.
-
----
-
-## Limitations
-
-- **Currently 64-bit Only**
-- **Currently Not Thread-Safe**
-- **Untested on macOS**
-- **No Built-in Collision Handling** (see above)
-
----
 
 ## Example V_Alloc Usage
 
