@@ -2,6 +2,7 @@
 #define DMAP_H
 #include <stdbool.h>
 #include <stddef.h>
+#include <limits.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,15 +25,7 @@ extern "C" {
 #define DMAP_INITIAL_CAPACITY 16
 #define DARR_GROWTH_MULTIPLIER 2.0f
 #define DMAP_GROWTH_MULTIPLIER 2.0f
-#define DMAP_HASHTABLE_MULTIPLIER 1.6f
-
-#ifndef SIZE_MAX
-    #if defined(__x86_64__) || defined(_M_X64) || defined(_WIN64)
-        #define SIZE_MAX 0xffffffffffffffffULL
-    #else
-        #define SIZE_MAX 0xffffffffU
-    #endif
-#endif
+#define DMAP_HASHTABLE_MULTIPLIER 1.5f
 
 typedef enum {
     ALLOC_MALLOC,  // malloc/realloc
@@ -88,11 +81,12 @@ void darr__free(void *a);
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
 typedef enum {
-    DMAP_UNINITIALIZED = 0,  // Unused/default state
-    DMAP_U32,  // 32-bit keys
+    DMAP_UNINITIALIZED = 0,  // unused/default state
     DMAP_U64,  // 64-bit keys
-    DMAP_STR   // String keys (hashed)
+    DMAP_STR   // string keys (hashed)
 } KeyType;
+
+typedef struct DmapEntry DmapEntry;
 
 typedef struct DmapHdr {
     AllocInfo *alloc_info; 
@@ -103,13 +97,11 @@ typedef struct DmapHdr {
     unsigned int returned_idx; // stores an index, used internally by macros
     unsigned int key_size; // make sure key sizes are consistent
     unsigned int *free_list; // array of indices to values stored in data[] that have been marked as deleted. 
-    void *entries; // the actual hashtable - contains the hash and an index to data[] where the values are stored
+    DmapEntry *entries; // the actual hashtable - contains the hash and an index to data[] where the values are stored
     KeyType key_type;
     AllocType alloc_type;
     _Alignas(DATA_ALIGNMENT) char data[];  // aligned data array - where values are stored
 } DmapHdr;
-
-// todo: ensure SIZE_MAX values below are never a valid index 
 
 #define DMAP_INVALID (SIZE_MAX)
 
@@ -119,7 +111,7 @@ typedef struct DmapHdr {
 static inline DmapHdr *dmap__hdr(void *d);
 size_t dmap__get_idx(void *dmap, void *key, size_t key_size);
 size_t dmap__delete(void *dmap, void *key, size_t key_size);
-void dmap__insert_entry(void *dmap, void *key, size_t key_size);
+void dmap__insert_entry(void *dmap, void *key, size_t key_size, bool is_string);
 bool dmap__find_data_idx(void *dmap, void *key, size_t key_size);
 void *dmap__grow(void *dmap, size_t elem_size) ;
 void *dmap__init(void *dmap, size_t initial_capacity, size_t elem_size, AllocType alloc_type);
@@ -154,10 +146,10 @@ static inline size_t dmap_cap(void *d){ return d ? dmap__hdr(d)->cap : 0; }
 // - 'd' is the hashmap from which to retrieve the value, effectively an array of v's.
 // - 'k' key for the value. Keys can be any type and are not stored.
 // - 'v' value 
-#define dmap_insert(d, k, v) (dmap__fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), sizeof(*(k))), ((d)[dmap__ret_idx(d)] = (v)), dmap__ret_idx(d)) 
+#define dmap_insert(d, k, v) (dmap__fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), sizeof(*(k)), false), ((d)[dmap__ret_idx(d)] = (v)), dmap__ret_idx(d)) 
 
 // same as above but uses a string as key value8
-#define dmap_kstr_insert(d, k, v, key_size) (dmap__kstr_fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), (key_size)), ((d)[dmap__ret_idx(d)] = (v)), dmap__ret_idx(d)) 
+#define dmap_kstr_insert(d, k, v, key_size) (dmap__kstr_fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), (key_size), true), ((d)[dmap__ret_idx(d)] = (v)), dmap__ret_idx(d)) 
 
 // Returns: A pointer to the value corresponding to 'k' in 'd', or NULL if the key is not found.
 #define dmap_get(d,k) (dmap__find_data_idx((d), (k), sizeof(*(k))) ? &(d)[dmap__ret_idx(d)] : NULL)  
