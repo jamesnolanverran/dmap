@@ -96,6 +96,7 @@ typedef enum {
 
 typedef struct DmapHdr {
     AllocInfo *alloc_info; 
+    unsigned long long hash_seed;
     unsigned int len; 
     unsigned int cap;
     unsigned int hash_cap;

@@ -52,6 +52,38 @@ static inline size_t next_power_of_2(size_t x) {
     return 1;
 }
 
+#include <time.h>
+#if defined(__linux__) || defined(__APPLE__)
+    #include <unistd.h>
+#endif
+#ifdef _WIN32
+    #include <windows.h>
+    #include <process.h>
+#endif
+
+uint64_t generate_dmap_seed() {
+    uint64_t seed = 14695981039346656037ULL; // FNV-1a offset basis
+    uint64_t timestamp = 0;
+    #ifdef _WIN32
+        FILETIME ft;
+        GetSystemTimeAsFileTime(&ft);
+        timestamp = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
+        uint64_t pid = (uint64_t)_getpid();
+    #else
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        timestamp = ((uint64_t)ts.tv_sec * 1000000000ULL) + ts.tv_nsec;
+        uint64_t pid = (uint64_t)getpid();
+    #endif
+
+    seed ^= timestamp;
+    seed *= 1099511628211ULL;
+    seed ^= pid;
+    seed *= 1099511628211ULL;
+
+    return seed;
+}
+
 
 #define DMAP_EMPTY (UINT32_MAX)
 #define DMAP_DELETED (UINT32_MAX - 1)
@@ -314,7 +346,7 @@ void *darr__init(void *arr, size_t initial_capacity, size_t elem_size, AllocType
     DarrHdr *new_hdr = NULL;
     size_t new_cap = MAX(DARR_INITIAL_CAPACITY, initial_capacity); 
     size_t size_in_bytes = offsetof(DarrHdr, data) + (new_cap * elem_size);
-    if(size_in_bytes > UINT32_MAX){
+    if(size_in_bytes > UINT32_MAX - 2){
         dmap_error_handler("Error: Max size exceeded\n");
     }
     switch (alloc_type) 
@@ -368,7 +400,7 @@ void *darr__grow(void *arr, size_t elem_size) {
             size_t additional_bytes = (size_t)((float)old_cap * (DARR_GROWTH_MULTIPLIER - 1.0f) * elem_size);
 
             size_t total_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
-            size_t max_capacity = (size_t)UINT32_MAX;
+            size_t max_capacity = (size_t)UINT32_MAX - 2;
             if(total_size_in_bytes > max_capacity){
                 dmap_error_handler("Error: Max size exceeded\n");
             }
@@ -383,7 +415,7 @@ void *darr__grow(void *arr, size_t elem_size) {
         case ALLOC_MALLOC: 
         {
             size_t new_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
-            size_t max_capacity = (size_t)UINT32_MAX;
+            size_t max_capacity = (size_t)UINT32_MAX - 2;
             if(new_size_in_bytes > max_capacity){
                 dmap_error_handler("Error: Max size exceeded\n");
             }
@@ -688,7 +720,7 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
             AllocInfo alloc_info = *dh->alloc_info;
             size_t additional_bytes = (size_t)((float)old_cap * (DMAP_GROWTH_MULTIPLIER - 1.0f) * elem_size);
             size_t total_size_in_bytes = offsetof(DmapHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
-            size_t max_capacity = (size_t)UINT32_MAX;
+            size_t max_capacity = (size_t)UINT32_MAX - 2;
             if(total_size_in_bytes > max_capacity){
                 dmap_error_handler("Error: Max size exceeded\n");
             }
@@ -702,7 +734,7 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
         case ALLOC_MALLOC: 
         {
             size_t new_size_in_bytes = offsetof(DmapHdr, data) + (size_t)((float)old_cap * (float)elem_size * DMAP_GROWTH_MULTIPLIER); 
-            size_t max_capacity = (size_t)UINT32_MAX;
+            size_t max_capacity = (size_t)UINT32_MAX - 2;
             if(new_size_in_bytes > max_capacity){
                 dmap_error_handler("Error: Max size exceeded\n");
             }
@@ -773,6 +805,7 @@ static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t ele
     new_hdr->free_list = NULL;
     new_hdr->key_type = DMAP_UNINITIALIZED;
     new_hdr->key_size = 0;
+    new_hdr->hash_seed = generate_dmap_seed();
 
     if(is_string){
         new_hdr->key_type = DMAP_STR;
@@ -858,7 +891,7 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size){
     // get a fresh data slot
     d->returned_idx = darr_len(d->free_list) ? darr_pop(d->free_list) : d->len;
     d->len += 1;
-    u64 hash = dmap_generate_hash(key, key_size, 1333);
+    u64 hash = dmap_generate_hash(key, key_size, d->hash_seed);
     // todo: finish implementing the union idea - starting with the hash we already use.
     size_t entry_index = dmap_find_slot(d->entries, key, key_size, hash, d->hash_cap, d->key_type);
 
@@ -870,7 +903,7 @@ static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
         return DMAP_EMPTY; // check if the hashmap is empty or NULL
     }
     DmapHdr *d = dmap__hdr(dmap); // retrieve the header of the hashmap for internal structure access
-    u64 hash = dmap_generate_hash(key, key_size, 1333); // generate a hash value for the given key
+    u64 hash = dmap_generate_hash(key, key_size, d->hash_seed); // generate a hash value for the given key
     size_t idx = hash % d->hash_cap; // calculate the initial index to start the search in the hash table
     // size_t idx = hash & (d->hash_cap - 1);
     size_t j = d->hash_cap; // counter to ensure the loop doesn't iterate more than the capacity of the hashmap
