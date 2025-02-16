@@ -30,8 +30,28 @@
             } while (0)
     #endif // common_assert_failed
 #else
-    #define assert(cond) ((void)0)
+    #include <assert.h>
 #endif
+
+#if defined(_MSC_VER) || defined(_WIN32)
+    #include <intrin.h>  // MSVC intrinsics
+#endif
+
+static inline size_t next_power_of_2(size_t x) {
+    if (x <= 1) return 1;  // Ensure minimum value of 1
+
+#if defined(_MSC_VER) || defined(_WIN32)
+    unsigned long index;
+    if (_BitScanReverse64(&index, x - 1)) {
+        return 1ULL << (index + 1);
+    }
+#else
+    return 1ULL << (64 - __builtin_clzl(x - 1));
+#endif
+
+    return 1;
+}
+
 
 #define DMAP_EMPTY (UINT32_MAX)
 #define DMAP_DELETED (UINT32_MAX - 1)
@@ -279,7 +299,6 @@ void darr__free(void *arr){
     {
         case ALLOC_VIRTUAL:
             v_alloc_free(a->alloc_info);
-            free(a->alloc_info);
             break;
         case ALLOC_MALLOC:
             free(a);
@@ -295,33 +314,39 @@ void *darr__init(void *arr, size_t initial_capacity, size_t elem_size, AllocType
     DarrHdr *new_hdr = NULL;
     size_t new_cap = MAX(DARR_INITIAL_CAPACITY, initial_capacity); 
     size_t size_in_bytes = offsetof(DarrHdr, data) + (new_cap * elem_size);
-    AllocInfo *alloc_info = NULL;
     if(size_in_bytes > UINT32_MAX){
         dmap_error_handler("Error: Max size exceeded\n");
     }
     switch (alloc_type) 
     {
         case ALLOC_VIRTUAL:
+        {
             #if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
                 dmap_error_handler("ALLOC_VIRTUAL not supported on this platform; use ALLOC_MALLOC");
             #endif
-            alloc_info = (AllocInfo*)malloc(sizeof(AllocInfo));
-            if(!v_alloc_committ(alloc_info, size_in_bytes)) {
-                dmap_error_handler("Allocation failed");
+            AllocInfo *alloc_info = (AllocInfo*)malloc(sizeof(AllocInfo));
+            if(!alloc_info){
+                dmap_error_handler("Allocation failed 0");
             }
-            new_hdr = (DarrHdr*)alloc_info->base;
+            memset(alloc_info, 0, sizeof(AllocInfo));
+            if(!v_alloc_committ(alloc_info, size_in_bytes)) {
+                dmap_error_handler("Allocation failed 1");
+            }
+            new_hdr = (DarrHdr*)(alloc_info->base);
+            new_hdr->alloc_info = alloc_info; 
             assert((size_t)(alloc_info->ptr - alloc_info->base) == offsetof(DarrHdr, data) + (new_cap * elem_size));
             break;
+        }
         case ALLOC_MALLOC:
+        {
             new_hdr = (DarrHdr*)malloc(size_in_bytes);
             if(!new_hdr) {
                 dmap_error_handler("Out of memory 4");
             }
+            new_hdr->alloc_info = NULL;
             break;
+        }
     }
-
-
-    new_hdr->alloc_info = alloc_info; 
     new_hdr->alloc_type = alloc_type;
     new_hdr->len = 0;
     new_hdr->cap = (u32)new_cap;
@@ -334,7 +359,7 @@ void *darr__grow(void *arr, size_t elem_size) {
         return darr__init(arr, 0, elem_size, ALLOC_MALLOC);
     }
     DarrHdr *dh = darr__hdr(arr);
-    DarrHdr *new = NULL;
+    DarrHdr *new_hdr = NULL;
     size_t old_cap = darr_cap(arr);
     switch (dh->alloc_type) 
     {
@@ -349,10 +374,10 @@ void *darr__grow(void *arr, size_t elem_size) {
             }
             AllocInfo alloc_info = *dh->alloc_info;
             if(!v_alloc_committ(&alloc_info, additional_bytes)) {
-                dmap_error_handler("Allocation failed");
+                dmap_error_handler("Allocation failed 2");
             }
-            new = (DarrHdr*)alloc_info.base;
-            *new->alloc_info = alloc_info;
+            new_hdr = (DarrHdr*)alloc_info.base;
+            *new_hdr->alloc_info = alloc_info;
             break;
         }
         case ALLOC_MALLOC: 
@@ -362,16 +387,16 @@ void *darr__grow(void *arr, size_t elem_size) {
             if(new_size_in_bytes > max_capacity){
                 dmap_error_handler("Error: Max size exceeded\n");
             }
-            new = realloc(dh, new_size_in_bytes);
-            if(!new) {
+            new_hdr = realloc(dh, new_size_in_bytes);
+            if(!new_hdr) {
                 dmap_error_handler("Out of memory 5");
             }
             break;
         }
     }
-    new->cap += (u32)old_cap;
-    assert(((size_t)&new->data & (DATA_ALIGNMENT - 1)) == 0); // Ensure alignment
-    return &new->data;
+    new_hdr->cap += (u32)old_cap;
+    assert(((size_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // Ensure alignment
+    return &new_hdr->data;
 }
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
@@ -551,6 +576,7 @@ static void *allocate_entries(size_t num_entries, size_t dmap_cap, KeyType key_t
 }
 static size_t dmap_find_empty_slot(void *entries, u64 hash, size_t hash_cap, KeyType type){
     size_t idx = hash % hash_cap;
+    // size_t idx = hash & (hash_cap - 1);
     size_t j = hash_cap;
     while(true){
         if(j-- == 0) assert(false); // unreachable - suggests there were no empty slots
@@ -565,6 +591,7 @@ static size_t dmap_find_empty_slot(void *entries, u64 hash, size_t hash_cap, Key
 }
 static size_t dmap_find_slot(void *entries, void *key, size_t key_size, u64 hash, size_t hash_cap, KeyType type){
     size_t idx = hash % hash_cap;
+    // size_t idx = hash & (hash_cap - 1);
     size_t j = hash_cap;
     while(true){
         if(j-- == 0) assert(false); // unreachable - suggests there were no empty slots
@@ -666,7 +693,7 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
                 dmap_error_handler("Error: Max size exceeded\n");
             }
             if(!v_alloc_committ(&alloc_info, additional_bytes)) {
-                dmap_error_handler("Allocation failed");
+                dmap_error_handler("Allocation failed 3");
             }
             new_hdr = (DmapHdr*)alloc_info.base;
             *new_hdr->alloc_info = alloc_info;
@@ -689,6 +716,8 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     new_hdr->cap = (size_t)((float)old_cap * DMAP_GROWTH_MULTIPLIER);
 
     size_t new_hash_cap = (size_t)((float)new_hdr->cap * DMAP_HASHTABLE_MULTIPLIER); 
+    // new_hash_cap = next_power_of_2(new_hash_cap);
+
     size_t old_hash_cap = new_hdr->hash_cap;
 
     new_hdr->hash_cap = (u32)new_hash_cap;
@@ -706,27 +735,35 @@ static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t ele
     DmapHdr *new_hdr = NULL;
     initial_capacity = MAX(DMAP_INITIAL_CAPACITY, initial_capacity); 
     size_t size_in_bytes = offsetof(DmapHdr, data) + (initial_capacity * elem_size);
-    AllocInfo *alloc_info = NULL;
     switch (alloc_type) 
     {
         case ALLOC_VIRTUAL:
+        {
             #if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
                 dmap_error_handler("ALLOC_VIRTUAL not supported on this platform; use ALLOC_MALLOC");
             #endif
-            alloc_info = (AllocInfo*)malloc(sizeof(AllocInfo));
+            AllocInfo *alloc_info = (AllocInfo*)malloc(sizeof(AllocInfo));
+            if(!alloc_info){
+                dmap_error_handler("Allocation failed 0");
+            }
+            memset(alloc_info, 0, sizeof(AllocInfo));
             if(!v_alloc_committ(alloc_info, size_in_bytes)) {
-                dmap_error_handler("Allocation failed");
+                dmap_error_handler("Allocation failed 4");
             }
             new_hdr = (DmapHdr*)alloc_info->base;
-        break;
+            new_hdr->alloc_info = alloc_info;
+            break;
+        }
         case ALLOC_MALLOC:
+        {
             new_hdr = (DmapHdr*)malloc(size_in_bytes);
             if(!new_hdr){
                 dmap_error_handler("Out of memory 3");
             }
-        break;
+            new_hdr->alloc_info = NULL;
+            break;
+        }
     }
-    new_hdr->alloc_info = alloc_info;
     new_hdr->alloc_type = alloc_type;
     new_hdr->len = 0;
     new_hdr->cap = (u32)initial_capacity;
@@ -783,7 +820,6 @@ void dmap__free(void *dmap){
         {
             case ALLOC_VIRTUAL:
                 v_alloc_free(d->alloc_info);
-                free(d->alloc_info);
                 break;
             case ALLOC_MALLOC:
                 free(dmap__hdr(dmap));
@@ -836,6 +872,7 @@ static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
     DmapHdr *d = dmap__hdr(dmap); // retrieve the header of the hashmap for internal structure access
     u64 hash = dmap_generate_hash(key, key_size, 1333); // generate a hash value for the given key
     size_t idx = hash % d->hash_cap; // calculate the initial index to start the search in the hash table
+    // size_t idx = hash & (d->hash_cap - 1);
     size_t j = d->hash_cap; // counter to ensure the loop doesn't iterate more than the capacity of the hashmap
 
     while(true) { // loop to search for the key in the hashmap
