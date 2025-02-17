@@ -34,7 +34,7 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 ---
 
 ## Performance
-- The library is designed for **ease of use** while maintaining strong performance. NOTE: Preallocate large tables using dmap_init for best performance!
+- The library is designed for **ease of use** while maintaining strong performance. 
 
 ## Hash Collisions
 - The library stores **raw key bytes** for 1, 2, 4 and 8 bytes keys. If a hash collision occurs, keys are compared directly.  
@@ -50,7 +50,7 @@ The dmap and darr libs support two memory management models:
 2. **Reserve/Commit Model**:  
    - Uses `VirtualAlloc` or `mmap` to reserve and commit memory, providing stable pointers and avoiding reallocations.
 
-An optional initialization function allows switching between these models, as well as preallocating an initial capacity.
+An optional initialization function allows switching between these models.
 
 ## Error Handling
 - By default, memory allocation failures trigger an error and exit().
@@ -82,7 +82,7 @@ int main() {
     int *my_dmap = NULL;
 
     // Optional: Initialize the hashmap with an initial capacity
-    dmap_init(my_dmap, 1024 * 1024, ALLOC_MALLOC); //   <--- essential for highest performance
+    dmap_init(my_dmap, 1024 * 1024, ALLOC_MALLOC); 
     // Insert values into the hashmap using integer keys
     int key_1 = 1;
     int key_2 = 2;
@@ -100,7 +100,7 @@ int main() {
     // Use a C-string as key
     char *str_key = "my_key";
 
-    // Optional: Initialize the key-string hashmap for best performance
+    // Optional: Initialize the key-string hashmap
     dmap_str_init(my_dmap, 1024 * 1024, ALLOC_MALLOC); 
     // Insert a value using a string key
     dmap_kstr_insert(my_str_dmap, str_key, 33, strlen(str_key)); // string keys need length param
