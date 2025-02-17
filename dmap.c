@@ -465,25 +465,18 @@ static u64 dmap_generate_hash(void *key, size_t key_size, u64 seed) {
 }
 
 static bool keys_match(DmapEntry *entries, size_t idx, u64 hash, void *key, size_t key_size, KeyType key_type) {
-    bool result = false;
-    DmapEntry *entry = &entries[idx];
-    if(entry->hash == hash) { // don't need a switch here or enums - todo
-        switch (key_type) {
-            case DMAP_U64:
-                if(memcmp(key, &entry->key, key_size) == 0) result = true;
-                break;
-            case DMAP_STR: {
-                u64 rehash = dmap_fnv_64(key, key_size, entry->hash);
-                if(entry->rehash == rehash) result = true;
-                break;
-            }
-            case DMAP_UNINITIALIZED: {
-                dmap_error_handler("invalid key type");
-                break;
-            }
+    if(entries[idx].hash == hash) { 
+        if(key_type == DMAP_U64){
+                return memcmp(key, &entries[idx].key, key_size) == 0;
+        }
+        else if(key_type == DMAP_STR){
+            return dmap_fnv_64(key, key_size, entries[idx].hash) == entries[idx].rehash;
+        }
+        else {
+            dmap_error_handler("invalid key type");
         }
     }
-    return result;
+    return false;
 }
 // return current or empty - for inserts - we can overwrite on insert
 static size_t dmap_find_slot(void *dmap, void *key, size_t key_size, u64 hash){
@@ -519,12 +512,13 @@ static void dmap_grow_entries(void *dmap, size_t new_hash_cap, size_t old_hash_c
         for (size_t i = 0; i < old_hash_cap; i++) {
             if(d->status[i] == DMAP_EMPTY) continue;
             // size_t idx = (d->entries[i].hash ^ (d->entries[i].hash >> 16)) % new_hash_cap;
-            size_t idx = d->entries[i].hash & (d->hash_cap - 1);
+            size_t idx = d->entries[i].hash & (new_hash_cap - 1);
             size_t j = new_hash_cap;
             while(true){
                 assert(j-- != 0); // unreachable, suggests no empty slot was found
                 if(new_status[idx] == DMAP_EMPTY){
                     new_entries[idx] = d->entries[i];
+                    new_status[idx] = DMAP_OCCUPIED;
                     break;
                 }
                 idx += 1;
@@ -631,11 +625,11 @@ static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t ele
             break;
         }
     }
-    size_t hash_cap = next_power_of_2((size_t)((float)initial_capacity * DMAP_HASHTABLE_MULTIPLIER));
+    size_t initial_hash_cap = next_power_of_2((size_t)((float)initial_capacity * DMAP_HASHTABLE_MULTIPLIER));
     new_hdr->alloc_type = alloc_type;
     new_hdr->len = 0;
     new_hdr->cap = (u32)initial_capacity;
-    new_hdr->hash_cap = hash_cap;
+    new_hdr->hash_cap = (u32)initial_hash_cap;
     new_hdr->returned_idx = DMAP_EMPTY;
     new_hdr->entries = NULL;
     new_hdr->status = NULL;
@@ -643,13 +637,8 @@ static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t ele
     new_hdr->key_type = DMAP_UNINITIALIZED;
     new_hdr->key_size = 0;
     new_hdr->hash_seed = dmap_generate_seed();
+    new_hdr->key_type = is_string ? DMAP_STR : DMAP_U64;
 
-    if(is_string){
-        new_hdr->key_type = DMAP_STR;
-    }
-    else {
-        new_hdr->key_type = DMAP_UNINITIALIZED;
-    }
     dmap_grow_entries(new_hdr->data, new_hdr->hash_cap, 0);
     assert(((uintptr_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // ensure alignment
     return new_hdr->data;
