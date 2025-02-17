@@ -87,6 +87,7 @@ typedef enum {
 } KeyType;
 
 typedef struct DmapEntry DmapEntry;
+typedef unsigned char DmapStatus;
 
 typedef struct DmapHdr {
     AllocInfo *alloc_info; 
@@ -98,6 +99,7 @@ typedef struct DmapHdr {
     unsigned int key_size; // make sure key sizes are consistent
     unsigned int *free_list; // array of indices to values stored in data[] that have been marked as deleted. 
     DmapEntry *entries; // the actual hashtable - contains the hash and an index to data[] where the values are stored
+    DmapStatus *status; // u8 metadata - empty/occupied/deleted
     KeyType key_type;
     AllocType alloc_type;
     _Alignas(DATA_ALIGNMENT) char data[];  // aligned data array - where values are stored
