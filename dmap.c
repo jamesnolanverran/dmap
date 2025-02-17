@@ -450,15 +450,15 @@ struct DmapEntry {
 #define DMAP_DELETED  2
 
 
-// declare hash function
+// declare hash functions
 static u64 dmap_fnv_64(void *buf, size_t len, u64 hval);
+static inline uint64_t rapidhash_internal(const void *key, size_t len, uint64_t seed, const uint64_t* secret);
 
 static const u64 RAPIDHASH_SECRET[3] = {
     0x9E3779B97F4A7C15ULL,  
     0xD6E8FEB86659FD93ULL,  
     0xCA9B0C7EBA1DA115ULL   
 };
-static inline uint64_t rapidhash_internal(const void *key, size_t len, uint64_t seed, const uint64_t* secret);
 
 static u64 dmap_generate_hash(void *key, size_t key_size, u64 seed) {
     return rapidhash_internal(key, key_size, seed, RAPIDHASH_SECRET);
