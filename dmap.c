@@ -39,14 +39,14 @@
 static inline size_t next_power_of_2(size_t x) {
     if (x <= 1) return 1;  // Ensure minimum value of 1
 
-#if defined(_MSC_VER) || defined(_WIN32)
-    unsigned long index;
-    if (_BitScanReverse64(&index, x - 1)) {
-        return 1ULL << (index + 1);
-    }
-#else
-    return 1ULL << (64 - __builtin_clzl(x - 1));
-#endif
+    #if defined(_MSC_VER) || defined(_WIN32)
+        unsigned long index;
+        if (_BitScanReverse64(&index, x - 1)) {
+            return 1ULL << (index + 1);
+        }
+    #else
+        return 1ULL << (64 - __builtin_clzl(x - 1));
+    #endif
 
     return 1;
 }
@@ -59,7 +59,8 @@ static inline size_t next_power_of_2(size_t x) {
     #include <windows.h>
     #include <process.h>
 #endif
-
+// todo: rethink this
+// random hash seed 
 uint64_t dmap_generate_seed() {
     uint64_t seed = 14695981039346656037ULL; // FNV-1a offset basis
     uint64_t timestamp = 0;
@@ -83,10 +84,6 @@ uint64_t dmap_generate_seed() {
     return seed;
 }
 
-
-#ifndef MIN
-#define MIN(x, y) ((x) <= (y) ? (x) : (y))
-#endif
 #ifndef MAX
 #define MAX(x, y) ((x) >= (y) ? (x) : (y))
 #endif
@@ -97,14 +94,14 @@ uint64_t dmap_generate_seed() {
 #define ALIGN_DOWN_PTR(p, a) ((void *)ALIGN_DOWN((uintptr_t)(p), (a)))
 #define ALIGN_UP_PTR(p, a) ((void *)ALIGN_UP((uintptr_t)(p), (a)))
 
-typedef signed char        s8; 
-typedef short              s16;
-typedef int                s32;
-typedef long long          s64;
-typedef unsigned char      u8; 
-typedef unsigned short     u16;
-typedef unsigned int       u32;
-typedef unsigned long long u64;
+typedef int8_t      s8; 
+typedef int16_t     s16;
+typedef int32_t     s32;
+typedef int64_t     s64;
+typedef uint8_t     u8; 
+typedef uint16_t    u16;
+typedef uint32_t    u32;
+typedef uint64_t    u64;
 
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
@@ -436,7 +433,7 @@ void *darr__grow(void *arr, size_t elem_size) {
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
 
-struct DmapEntry {
+struct DmapTable {
     u64 hash;
     union {
         u64 key;
@@ -445,14 +442,13 @@ struct DmapEntry {
     u32 data_idx;
 };
 
-#define DMAP_EMPTY   0
-#define DMAP_OCCUPIED 1
-#define DMAP_DELETED  2
+#define DMAP_EMPTY   UINT32_MAX
+#define DMAP_DELETED  UINT32_MAX - 1
 
 
 // declare hash functions
 static u64 dmap_fnv_64(void *buf, size_t len, u64 hval);
-static inline uint64_t rapidhash_internal(const void *key, size_t len, uint64_t seed, const uint64_t* secret);
+static inline u64 rapidhash_internal(const void *key, size_t len, u64 seed, const u64 *secret);
 
 static const u64 RAPIDHASH_SECRET[3] = {
     0x9E3779B97F4A7C15ULL,  
@@ -464,75 +460,66 @@ static u64 dmap_generate_hash(void *key, size_t key_size, u64 seed) {
     return rapidhash_internal(key, key_size, seed, RAPIDHASH_SECRET);
 }
 
-static bool keys_match(DmapEntry *entries, size_t idx, u64 hash, void *key, size_t key_size, KeyType key_type) {
-    if(entries[idx].hash == hash) { 
-        if(key_type == DMAP_U64){
-                return memcmp(key, &entries[idx].key, key_size) == 0;
-        }
-        else if(key_type == DMAP_STR){
-            return dmap_fnv_64(key, key_size, entries[idx].hash) == entries[idx].rehash;
-        }
-        else {
-            dmap_error_handler("invalid key type");
-        }
+static bool keys_match(DmapTable *table, size_t idx, void *key, size_t key_size, KeyType key_type) {
+    if(key_type == DMAP_U64){
+        return memcmp(key, &table[idx].key, key_size) == 0;
+    }
+    else if(key_type == DMAP_STR){
+        return dmap_fnv_64(key, key_size, table[idx].hash) == table[idx].rehash;
+    }
+    else {
+        dmap_error_handler("invalid key type");
     }
     return false;
 }
 // return current or empty - for inserts - we can overwrite on insert
 static size_t dmap_find_slot(void *dmap, void *key, size_t key_size, u64 hash){
     DmapHdr *d = dmap__hdr(dmap);
-    DmapEntry *entries = d->entries;
+    DmapTable *table = d->table;
     // size_t idx = hash % hash_cap;
     // size_t idx = (hash ^ (hash >> 16)) % d->hash_cap;
     size_t idx = hash & (d->hash_cap - 1);
     size_t j = d->hash_cap;
     while(true){
-        if(j-- == 0) assert(false); // unreachable - suggests there were no empty slots
-        if(d->status[idx] != DMAP_OCCUPIED) return idx;
-        if(keys_match(entries, idx, hash, key, key_size, d->key_type)){
-            return idx;
+        assert(j-- != 0); // unreachable - suggests there were no empty slots
+        if(d->table[idx].data_idx == DMAP_EMPTY) return idx;
+        if(d->table[idx].hash == hash){
+            if(keys_match(table, idx, key, key_size, d->key_type)){
+                return idx;
+            }
         }
-        idx += 1;
-        if(idx >= d->hash_cap){
-            idx = 0;
-        }
+        idx = (idx + 1) & (d->hash_cap - 1);
     }
 }
 // grows the entry array of the hashmap to accommodate more elements
 static void dmap_grow_entries(void *dmap, size_t new_hash_cap, size_t old_hash_cap) {
     DmapHdr *d = dmap__hdr(dmap); // retrieve the hashmap header
-    size_t new_size_in_bytes = new_hash_cap * sizeof(DmapEntry);
-    DmapEntry *new_entries = (DmapEntry*)malloc(new_size_in_bytes);
-    DmapStatus *new_status = (DmapStatus*)calloc(new_hash_cap, sizeof(u8));
+    size_t new_size_in_bytes = new_hash_cap * sizeof(DmapTable);
+    DmapTable *new_entries = malloc(new_size_in_bytes);
     if (!new_entries) {
         dmap_error_handler("Out of memory 1");
     }
-    // if the hashmap has existing entries, rehash them into the new entry array
+    memset(new_entries, 0xff, new_size_in_bytes); // set data indices to DMAP_EMPTY
+    // if the hashmap has existing table, rehash them into the new entry array
     if (dmap_count(dmap)) {
         for (size_t i = 0; i < old_hash_cap; i++) {
-            if(d->status[i] == DMAP_EMPTY) continue;
-            // size_t idx = (d->entries[i].hash ^ (d->entries[i].hash >> 16)) % new_hash_cap;
-            size_t idx = d->entries[i].hash & (new_hash_cap - 1);
+            if(d->table[i].data_idx == DMAP_EMPTY) continue;
+            // size_t idx = (d->table[i].hash ^ (d->table[i].hash >> 16)) % new_hash_cap;
+            size_t idx = d->table[i].hash & (new_hash_cap - 1);
             size_t j = new_hash_cap;
             while(true){
                 assert(j-- != 0); // unreachable, suggests no empty slot was found
-                if(new_status[idx] == DMAP_EMPTY){
-                    new_entries[idx] = d->entries[i];
-                    new_status[idx] = DMAP_OCCUPIED;
+                if(new_entries[idx].data_idx == DMAP_EMPTY){
+                    new_entries[idx] = d->table[i];
                     break;
                 }
-                idx += 1;
-                if(idx >= new_hash_cap){
-                    idx = 0;
-                }
+                idx = (idx + 1) & (new_hash_cap - 1);
             }
         }
     }
     // replace the old entry array with the new one
-    free(d->entries);
-    free(d->status);
-    d->entries = new_entries;
-    d->status = new_status;
+    free(d->table);
+    d->table = new_entries;
 }
 static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     if (!dmap) {
@@ -576,13 +563,14 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     }
     new_hdr->cap = (size_t)((float)old_cap * DMAP_GROWTH_MULTIPLIER);
 
+    // todo: capacity should be a fraction of the table, which is always a power of two
     size_t new_hash_cap = (size_t)((float)new_hdr->cap * DMAP_HASHTABLE_MULTIPLIER); 
     new_hash_cap = next_power_of_2(new_hash_cap);
 
     size_t old_hash_cap = new_hdr->hash_cap;
 
     new_hdr->hash_cap = (u32)new_hash_cap;
-    // grow the entries to fit into the newly allocated space
+    // grow the table to fit into the newly allocated space
     dmap_grow_entries(new_hdr->data, new_hash_cap, old_hash_cap); 
 
     assert(((uintptr_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // ensure alignment
@@ -631,8 +619,7 @@ static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t ele
     new_hdr->cap = (u32)initial_capacity;
     new_hdr->hash_cap = (u32)initial_hash_cap;
     new_hdr->returned_idx = DMAP_EMPTY;
-    new_hdr->entries = NULL;
-    new_hdr->status = NULL;
+    new_hdr->table = NULL;
     new_hdr->free_list = NULL;
     new_hdr->key_type = DMAP_UNINITIALIZED;
     new_hdr->key_size = 0;
@@ -669,11 +656,8 @@ void *dmap__grow(void *dmap, size_t elem_size) {
 void dmap__free(void *dmap){
     DmapHdr *d = dmap__hdr(dmap);
     if(d){
-        if(d->entries) {
-            free(d->entries); 
-        }
-        if(d->status){
-            free(d->status);
+        if(d->table) {
+            free(d->table); 
         }
         if(d->free_list) {
             darr_free(d->free_list);
@@ -693,17 +677,32 @@ void dmap__free(void *dmap){
         }
     }
 }
-// clear/reset the dmap without freeing memory
-void dmap_clear(void *dmap){
-    if(!dmap) {
-        dmap_error_handler("dmap_clear: argument must not be null");
+static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
+    if(dmap_cap(dmap)==0) {
+        return DMAP_INVALID; // check if the hashmap is empty or NULL
     }
-    DmapHdr *d = dmap__hdr(dmap);
-    for (size_t i = 0; i < d->hash_cap; i++) { // entries are empty by default
-        d->status[i] = DMAP_EMPTY;
+    DmapHdr *d = dmap__hdr(dmap); // retrieve the header of the hashmap for internal structure access
+    u64 hash = dmap_generate_hash(key, key_size, d->hash_seed); // generate a hash value for the given key
+    // size_t idx = hash % d->hash_cap; // calculate the initial index to start the search in the hash table
+    // size_t idx = (hash ^ (hash >> 16)) % d->hash_cap;
+    size_t idx = hash & (d->hash_cap - 1);
+    size_t j = d->hash_cap; // counter to ensure the loop doesn't iterate more than the capacity of the hashmap
+    // size_t total_probes = 0;
+
+    while(true) { // loop to search for the key in the hashmap
+        assert(j-- != 0); // unreachable -- suggests table is full
+        if(d->table[idx].data_idx == DMAP_EMPTY){ // if the entry is empty, the key is not in the hashmap
+            return DMAP_INVALID;
+        }
+        if(d->table[idx].data_idx != DMAP_EMPTY && d->table[idx].data_idx != DMAP_DELETED) {
+            if(d->table[idx].hash == hash){
+                if(keys_match(d->table, idx, key, key_size, d->key_type)){
+                    return idx;
+                }
+            }
+        }
+        idx = (idx + 1) & (d->hash_cap - 1); // move to the next index, wrapping around to the start if necessary
     }
-    darr_clear(d->free_list);
-    d->len = 0;
 }
 void dmap__insert_entry(void *dmap, void *key, size_t key_size, bool is_string){ 
     DmapHdr *d = dmap__hdr(dmap);
@@ -722,73 +721,53 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size, bool is_string){
         dmap_error_handler(err);
     }
     // get a fresh data slot
-    d->returned_idx = darr_len(d->free_list) ? darr_pop(d->free_list) : d->len;
-    d->len += 1;
+    // size_t key_already_exists = dmap__get_entry_index(dmap, key, key_size);
+    // if(key_already_exists != DMAP_INVALID){
+    //     d->returned_idx = key_already_exists;
+    //     return;
+    // }
+
     u64 hash = dmap_generate_hash(key, key_size, d->hash_seed);
     // todo: finish implementing the union idea - starting with the hash we already use.
     size_t idx = dmap_find_slot(dmap, key, key_size, hash);
-    assert(idx != DMAP_INVALID);
 
-    d->status[idx] = DMAP_OCCUPIED;
-    DmapEntry *entry = &d->entries[idx];
-    switch (d->key_type) {
-        case DMAP_U64: {
-            entry->hash = hash;
-            entry->data_idx = d->returned_idx;
-            entry->key = 0;  // zero-out first
-            memcpy(&entry->key, key, key_size);
-            break;
-        }
-        case DMAP_STR:{
-            entry->hash = hash;
-            entry->data_idx = d->returned_idx;
-            entry->rehash = dmap_fnv_64(key, key_size, hash);  // rehash
-            break;
-        }
-        case DMAP_UNINITIALIZED:{
-        default:
-            dmap_error_handler("Invalid KeyType in insert_entry.\n");
+    if(d->table[idx].data_idx != DMAP_EMPTY && d->table[idx].data_idx != DMAP_DELETED){
+        d->returned_idx = d->table[idx].data_idx;
+        return;
+    }
+    else {
+        d->returned_idx = darr_len(d->free_list) ? darr_pop(d->free_list) : d->len;
+        d->len += 1;
+
+        DmapTable *entry = &d->table[idx];
+        switch (d->key_type) {
+            case DMAP_U64: {
+                entry->hash = hash;
+                entry->data_idx = d->returned_idx;
+                entry->key = 0;  // zero-out first
+                memcpy(&entry->key, key, key_size);
+                break;
+            }
+            case DMAP_STR:{
+                entry->hash = hash;
+                entry->data_idx = d->returned_idx;
+                entry->rehash = dmap_fnv_64(key, key_size, hash);  // rehash
+                break;
+            }
+            case DMAP_UNINITIALIZED:{
+            default:
+                dmap_error_handler("Invalid KeyType in insert_entry.\n");
+            }
         }
     }
 }
 // returns: size_t - The index of the entry if the key is found, or DMAP_INVALID if the key is not present
-static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
-    if(dmap_cap(dmap)==0) {
-        return DMAP_INVALID; // check if the hashmap is empty or NULL
-    }
-    DmapHdr *d = dmap__hdr(dmap); // retrieve the header of the hashmap for internal structure access
-    u64 hash = dmap_generate_hash(key, key_size, d->hash_seed); // generate a hash value for the given key
-    // size_t idx = hash % d->hash_cap; // calculate the initial index to start the search in the hash table
-    // size_t idx = (hash ^ (hash >> 16)) % d->hash_cap;
-    size_t idx = hash & (d->hash_cap - 1);
-    size_t j = d->hash_cap; // counter to ensure the loop doesn't iterate more than the capacity of the hashmap
-    // size_t total_probes = 0;
-
-    while(true) { // loop to search for the key in the hashmap
-        if(j-- == 0) assert(false); // unreachable -- suggests entries is full
-        if(d->status[idx] == DMAP_EMPTY){ // if the entry is empty, the key is not in the hashmap
-            return DMAP_INVALID;
-        }
-        if(d->status[idx] == DMAP_OCCUPIED && keys_match(d->entries, idx, hash, key, key_size, d->key_type)) {
-            // if(total_probes > 3){
-                // printf("Total probes: %zu\n", total_probes);
-            // }
-            return idx;
-        }
-        // total_probes++;
-        
-        idx += 1; // move to the next index, wrapping around to the start if necessary
-        if(idx >= d->hash_cap) { 
-            idx = 0; 
-        } 
-    }
-}
 bool dmap__find_data_idx(void *dmap, void *key, size_t key_size){
     if(!dmap){
         return false;
     }
     DmapHdr *d = dmap__hdr(dmap);
-    if(d->key_size != key_size && d->key_size != UINT32_MAX){
+    if(d->key_size != key_size && d->key_size != UINT32_MAX){ 
         char err[128];
         snprintf(err, 128, "GET: Key is not the correct type, it should be %u bytes, but is %zu bytes.\n", d->key_size, key_size);
         dmap_error_handler(err);
@@ -797,7 +776,7 @@ bool dmap__find_data_idx(void *dmap, void *key, size_t key_size){
     if(idx == DMAP_INVALID) { 
         return false; // entry is not found
     }
-    d->returned_idx = d->entries[idx].data_idx;
+    d->returned_idx = d->table[idx].data_idx;
     return true;
 }
 // returns: size_t - The index of the data associated with the key, or DMAP_INVALID (UINT32_MAX) if the key is not found
@@ -807,7 +786,7 @@ size_t dmap__get_idx(void *dmap, void *key, size_t key_size){
     if(idx == DMAP_INVALID) {
         return DMAP_INVALID;
     }
-    return d->entries[idx].data_idx;
+    return d->table[idx].data_idx;
 }
     // returns the data index of the deleted entry. Caller may wish to mark data as invalid
 size_t dmap__delete(void *dmap, void *key, size_t key_size){
@@ -816,9 +795,9 @@ size_t dmap__delete(void *dmap, void *key, size_t key_size){
         return DMAP_INVALID;
     }
     DmapHdr *d = dmap__hdr(dmap);
-    u32 data_index = d->entries[idx].data_idx;
+    u32 data_index = d->table[idx].data_idx;
     darr_push(d->free_list, data_index);
-    d->status[idx] = DMAP_DELETED;
+    d->table[idx].data_idx = DMAP_DELETED;
     d->len -= 1; 
     return data_index;
 }
@@ -828,7 +807,7 @@ size_t dmap_kstr_delete(void *dmap, void *key, size_t key_size){
 size_t dmap_kstr_get_idx(void *dmap, void *key, size_t key_size){
     return dmap__get_idx(dmap, key, key_size);
 }
-// len of the data array, including invalid entries. For iterating
+// len of the data array, including invalid table. For iterating
 size_t dmap_range(void *dmap){ 
     return dmap ? dmap__hdr(dmap)->len + darr_len(dmap__hdr(dmap)->free_list) : 0; 
 } 

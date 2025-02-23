@@ -25,7 +25,7 @@ extern "C" {
 #define DMAP_INITIAL_CAPACITY 16
 #define DARR_GROWTH_MULTIPLIER 2.0f
 #define DMAP_GROWTH_MULTIPLIER 2.0f
-#define DMAP_HASHTABLE_MULTIPLIER 1.625f
+#define DMAP_HASHTABLE_MULTIPLIER 1.5f
 
 typedef enum {
     ALLOC_MALLOC,  // malloc/realloc
@@ -86,26 +86,24 @@ typedef enum {
     DMAP_STR   // string keys (hashed)
 } KeyType;
 
-typedef struct DmapEntry DmapEntry;
-typedef unsigned char DmapStatus;
+typedef struct DmapTable DmapTable;
 
 typedef struct DmapHdr {
     AllocInfo *alloc_info; 
+    DmapTable *table; // the actual hashtable - contains the hash and an index to data[] where the values are stored
     unsigned long long hash_seed;
+    unsigned int *free_list; // array of indices to values stored in data[] that have been marked as deleted. 
     unsigned int len; 
     unsigned int cap;
     unsigned int hash_cap;
     unsigned int returned_idx; // stores an index, used internally by macros
     unsigned int key_size; // make sure key sizes are consistent
-    unsigned int *free_list; // array of indices to values stored in data[] that have been marked as deleted. 
-    DmapEntry *entries; // the actual hashtable - contains the hash and an index to data[] where the values are stored
-    DmapStatus *status; // u8 metadata - empty/occupied/deleted
     KeyType key_type;
     AllocType alloc_type;
     _Alignas(DATA_ALIGNMENT) char data[];  // aligned data array - where values are stored
 } DmapHdr;
 
-#define DMAP_INVALID (SIZE_MAX)
+#define DMAP_INVALID SIZE_MAX
 
 ///////////////////////
 // These functions are internal but are utilized by macros so need to be declared here.
@@ -178,7 +176,6 @@ size_t dmap_kstr_delete(void *dmap, void *key, size_t key_size);
 // for iterating directly over the entire data array, including items marked as deleted
 size_t dmap_range(void *dmap); 
 
-void dmap_clear(void *dmap);
 
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
