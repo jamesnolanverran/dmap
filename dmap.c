@@ -62,7 +62,7 @@ static inline size_t next_power_of_2(size_t x) {
 // todo: needed?
 // random hash seed 
 uint64_t dmap_generate_seed() {
-    uint64_t seed = 14695981039346656037ULL; // FNV-1a offset basis
+    uint64_t seed = 14695981039346656037ULL; 
     uint64_t timestamp = 0;
     #ifdef _WIN32
         FILETIME ft;
@@ -343,7 +343,8 @@ void *darr__init(void *arr, size_t initial_capacity, size_t elem_size, AllocType
     DarrHdr *new_hdr = NULL;
     size_t new_cap = MAX(DARR_INITIAL_CAPACITY, initial_capacity); 
     size_t size_in_bytes = offsetof(DarrHdr, data) + (new_cap * elem_size);
-    if(size_in_bytes > UINT32_MAX){
+    size_t max_size = (size_t)UINT32_MAX - 2;
+    if(size_in_bytes > max_size){
         dmap_error_handler("Error: Max size exceeded\n");
     }
     switch (alloc_type) 
@@ -391,7 +392,7 @@ void *darr__grow(void *arr, size_t elem_size) {
     DarrHdr *new_hdr = NULL;
     size_t old_cap = dh->cap;
     size_t total_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
-    size_t max_capacity = (size_t)UINT32_MAX;
+    size_t max_capacity = (size_t)UINT32_MAX - 2;
     if(total_size_in_bytes > max_capacity){
         dmap_error_handler("Error: Max size exceeded\n");
     }
@@ -437,11 +438,10 @@ struct DmapTable {
 };
 
 #define DMAP_EMPTY   UINT32_MAX
-#define DMAP_DELETED  UINT32_MAX - 1
+#define DMAP_DELETED  (UINT32_MAX - 1)
 
 
 // declare hash functions
-static u64 dmap_fnv_64(void *buf, size_t len, u64 hval);
 static inline u64 rapidhash_internal(const void *key, size_t len, u64 seed, const u64 *secret);
 
 static const u64 RAPIDHASH_SECRET[3] = {
@@ -459,7 +459,7 @@ static bool keys_match(DmapTable *table, size_t idx, void *key, size_t key_size,
         return memcmp(key, &table[idx].key, key_size) == 0;
     }
     else if(key_type == DMAP_STR){
-        return dmap_fnv_64(key, key_size, table[idx].hash) == table[idx].rehash;
+        return dmap_generate_hash(key, key_size, table[idx].hash) == table[idx].rehash;
     }
     else {
         dmap_error_handler("invalid key type");
@@ -520,27 +520,13 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
         dmap_error_handler("dmap not initialized; unreachable");
     }
     DmapHdr *dh = dmap__hdr(dmap);
-    
     DmapHdr *new_hdr = NULL;
-    // initial_capacity = MAX(DMAP_INITIAL_CAPACITY, initial_capacity);
-    // size_t initial_hash_cap = next_power_of_2(initial_capacity);
-    // while ((size_t)(initial_hash_cap * DMAP_LOAD_FACTOR) < initial_capacity) {
-    //     initial_hash_cap *= 2;
-    // }
-    // initial_capacity = (size_t)((float)initial_hash_cap * DMAP_LOAD_FACTOR);
-    // size_t old_cap = dmap_cap(dmap);
-    // size_t old_hash_cap = dh->hash_cap;
-    //         size_t additional_bytes = (size_t)((float)old_cap * (DMAP_GROWTH_MULTIPLIER - 1.0f) * elem_size);
-    //         size_t total_size_in_bytes = offsetof(DmapHdr, data) + (size_t)((float)old_cap * (float)elem_size * DMAP_GROWTH_MULTIPLIER);
-    //         if(total_size_in_bytes > max_capacity){
-    //             dmap_error_handler("Error: Max size exceeded\n");
-    //         }
     size_t old_hash_cap = dh->hash_cap;
     size_t old_cap = dh->cap;
     size_t new_hash_cap = old_hash_cap * 2;
     size_t new_cap = (size_t)((float)new_hash_cap * DMAP_LOAD_FACTOR);
     size_t total_size_in_bytes = offsetof(DmapHdr, data) + (new_cap * elem_size);
-    size_t max_size = (size_t)UINT32_MAX;
+    size_t max_size = (size_t)UINT32_MAX - 2;
     if (total_size_in_bytes > max_size) {
         dmap_error_handler("Error: Max size exceeded\n");
     }
@@ -740,7 +726,7 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size, bool is_string){
                 break;
             }
             case DMAP_STR:{
-                entry->rehash = dmap_fnv_64(key, key_size, hash);  // rehash
+                entry->rehash = dmap_generate_hash(key, key_size, hash);  // rehash
                 break;
             }
             case DMAP_UNINITIALIZED:{
@@ -802,16 +788,6 @@ size_t dmap_range(void *dmap){
 } 
 
 // MARK: hash function:
-static u64 dmap_fnv_64(void *buf, size_t len, u64 hval) { // fnv_64a unsigned char *bp = (unsigned char *)buf;
-    unsigned char *bp = (unsigned char *)buf;
-    unsigned char *be = bp + len;
-    while (bp < be) {
-        hval ^= (u64)*bp++;
-        hval *= 0x100000001b3ULL;
-        // hval += (hval << 1) + (hval << 4) + (hval << 5) + (hval << 7) + (hval << 8) + (hval << 40);
-    }
-    return hval;
-}
 // - rapidhash source repository: https://github.com/Nicoshev/rapidhash
 
 /*
