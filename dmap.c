@@ -59,7 +59,7 @@ static inline size_t next_power_of_2(size_t x) {
     #include <windows.h>
     #include <process.h>
 #endif
-// todo: rethink this
+// todo: needed?
 // random hash seed 
 uint64_t dmap_generate_seed() {
     uint64_t seed = 14695981039346656037ULL; // FNV-1a offset basis
@@ -492,14 +492,14 @@ static size_t dmap_find_slot(void *dmap, void *key, size_t key_size, u64 hash){
     }
 }
 // grows the entry array of the hashmap to accommodate more elements
-static void dmap_grow_entries(void *dmap, size_t new_hash_cap, size_t old_hash_cap) {
+static void dmap_grow_table(void *dmap, size_t new_hash_cap, size_t old_hash_cap) {
     DmapHdr *d = dmap__hdr(dmap); // retrieve the hashmap header
     size_t new_size_in_bytes = new_hash_cap * sizeof(DmapTable);
-    DmapTable *new_entries = malloc(new_size_in_bytes);
-    if (!new_entries) {
+    DmapTable *new_table = malloc(new_size_in_bytes);
+    if (!new_table) {
         dmap_error_handler("Out of memory 1");
     }
-    memset(new_entries, 0xff, new_size_in_bytes); // set data indices to DMAP_EMPTY
+    memset(new_table, 0xff, new_size_in_bytes); // set data indices to DMAP_EMPTY
     // if the hashmap has existing table, rehash them into the new entry array
     if (dmap_count(dmap)) {
         for (size_t i = 0; i < old_hash_cap; i++) {
@@ -509,8 +509,8 @@ static void dmap_grow_entries(void *dmap, size_t new_hash_cap, size_t old_hash_c
             size_t j = new_hash_cap;
             while(true){
                 assert(j-- != 0); // unreachable, suggests no empty slot was found
-                if(new_entries[idx].data_idx == DMAP_EMPTY){
-                    new_entries[idx] = d->table[i];
+                if(new_table[idx].data_idx == DMAP_EMPTY){
+                    new_table[idx] = d->table[i];
                     break;
                 }
                 idx = (idx + 1) & (new_hash_cap - 1);
@@ -519,7 +519,7 @@ static void dmap_grow_entries(void *dmap, size_t new_hash_cap, size_t old_hash_c
     }
     // replace the old entry array with the new one
     free(d->table);
-    d->table = new_entries;
+    d->table = new_table;
 }
 static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     if (!dmap) {
@@ -528,18 +528,34 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     DmapHdr *dh = dmap__hdr(dmap);
     
     DmapHdr *new_hdr = NULL;
-    size_t old_cap = dmap_cap(dmap);
+    // initial_capacity = MAX(DMAP_INITIAL_CAPACITY, initial_capacity);
+    // size_t initial_hash_cap = next_power_of_2(initial_capacity);
+    // while ((size_t)(initial_hash_cap * DMAP_LOAD_FACTOR) < initial_capacity) {
+    //     initial_hash_cap *= 2;
+    // }
+    // initial_capacity = (size_t)((float)initial_hash_cap * DMAP_LOAD_FACTOR);
+    // size_t old_cap = dmap_cap(dmap);
+    // size_t old_hash_cap = dh->hash_cap;
+    //         size_t additional_bytes = (size_t)((float)old_cap * (DMAP_GROWTH_MULTIPLIER - 1.0f) * elem_size);
+    //         size_t total_size_in_bytes = offsetof(DmapHdr, data) + (size_t)((float)old_cap * (float)elem_size * DMAP_GROWTH_MULTIPLIER);
+    //         if(total_size_in_bytes > max_capacity){
+    //             dmap_error_handler("Error: Max size exceeded\n");
+    //         }
+    size_t old_hash_cap = dh->hash_cap;
+    size_t old_cap = dh->cap;
+    size_t new_hash_cap = old_hash_cap * 2;
+    size_t new_cap = (size_t)((float)new_hash_cap * DMAP_LOAD_FACTOR);
+    size_t total_size_in_bytes = offsetof(DmapHdr, data) + (new_cap * elem_size);
+    size_t max_size = (size_t)UINT32_MAX;
+    if (total_size_in_bytes > max_size) {
+        dmap_error_handler("Error: Max size exceeded\n");
+    }
     switch (dh->alloc_type) 
     {
         case ALLOC_VIRTUAL: 
         {
             AllocInfo alloc_info = *dh->alloc_info;
-            size_t additional_bytes = (size_t)((float)old_cap * (DMAP_GROWTH_MULTIPLIER - 1.0f) * elem_size);
-            size_t total_size_in_bytes = offsetof(DmapHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
-            size_t max_capacity = (size_t)UINT32_MAX;
-            if(total_size_in_bytes > max_capacity){
-                dmap_error_handler("Error: Max size exceeded\n");
-            }
+            size_t additional_bytes = (new_cap - old_cap) * elem_size;
             if(!v_alloc_committ(&alloc_info, additional_bytes)) {
                 dmap_error_handler("Allocation failed 3");
             }
@@ -549,29 +565,18 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
         }
         case ALLOC_MALLOC: 
         {
-            size_t new_size_in_bytes = offsetof(DmapHdr, data) + (size_t)((float)old_cap * (float)elem_size * DMAP_GROWTH_MULTIPLIER); 
-            size_t max_capacity = (size_t)UINT32_MAX;
-            if(new_size_in_bytes > max_capacity){
-                dmap_error_handler("Error: Max size exceeded\n");
-            }
-            new_hdr = realloc(dh, new_size_in_bytes);
+            new_hdr = realloc(dh, total_size_in_bytes);
             if(!new_hdr) {
                 dmap_error_handler("Out of memory 2");
             }
             break;
         }
     }
-    new_hdr->cap = (size_t)((float)old_cap * DMAP_GROWTH_MULTIPLIER);
-
-    // todo: capacity should be a fraction of the table, which is always a power of two
-    size_t new_hash_cap = (size_t)((float)new_hdr->cap * DMAP_HASHTABLE_MULTIPLIER); 
-    new_hash_cap = next_power_of_2(new_hash_cap);
-
-    size_t old_hash_cap = new_hdr->hash_cap;
-
-    new_hdr->hash_cap = (u32)new_hash_cap;
     // grow the table to fit into the newly allocated space
-    dmap_grow_entries(new_hdr->data, new_hash_cap, old_hash_cap); 
+    dmap_grow_table(new_hdr->data, new_hash_cap, old_hash_cap); 
+
+    new_hdr->cap = (u32)new_cap;
+    new_hdr->hash_cap = (u32)new_hash_cap;
 
     assert(((uintptr_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // ensure alignment
     return new_hdr->data; // return the aligned data pointer
@@ -582,7 +587,13 @@ static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t ele
         dmap_error_handler("dmap_init: dmap already initialized, argument must be null");
     }
     DmapHdr *new_hdr = NULL;
-    initial_capacity = MAX(DMAP_INITIAL_CAPACITY, initial_capacity); 
+
+    initial_capacity = MAX(DMAP_INITIAL_CAPACITY, initial_capacity);
+    size_t initial_hash_cap = next_power_of_2(initial_capacity);
+    while ((size_t)((float)initial_hash_cap * DMAP_LOAD_FACTOR) < initial_capacity) {
+        initial_hash_cap *= 2;
+    }
+    initial_capacity = (size_t)((float)initial_hash_cap * DMAP_LOAD_FACTOR);
     size_t size_in_bytes = offsetof(DmapHdr, data) + (initial_capacity * elem_size);
     switch (alloc_type) 
     {
@@ -613,7 +624,6 @@ static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t ele
             break;
         }
     }
-    size_t initial_hash_cap = next_power_of_2((size_t)((float)initial_capacity * DMAP_HASHTABLE_MULTIPLIER));
     new_hdr->alloc_type = alloc_type;
     new_hdr->len = 0;
     new_hdr->cap = (u32)initial_capacity;
@@ -626,7 +636,7 @@ static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t ele
     new_hdr->hash_seed = dmap_generate_seed();
     new_hdr->key_type = is_string ? DMAP_STR : DMAP_U64;
 
-    dmap_grow_entries(new_hdr->data, new_hdr->hash_cap, 0);
+    dmap_grow_table(new_hdr->data, new_hdr->hash_cap, 0);
     assert(((uintptr_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // ensure alignment
     return new_hdr->data;
 }
@@ -683,19 +693,15 @@ static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
     }
     DmapHdr *d = dmap__hdr(dmap); // retrieve the header of the hashmap for internal structure access
     u64 hash = dmap_generate_hash(key, key_size, d->hash_seed); // generate a hash value for the given key
-    // size_t idx = hash % d->hash_cap; // calculate the initial index to start the search in the hash table
-    // size_t idx = (hash ^ (hash >> 16)) % d->hash_cap;
     size_t idx = hash & (d->hash_cap - 1);
     size_t j = d->hash_cap; // counter to ensure the loop doesn't iterate more than the capacity of the hashmap
-    // size_t total_probes = 0;
-
     while(true) { // loop to search for the key in the hashmap
         assert(j-- != 0); // unreachable -- suggests table is full
         if(d->table[idx].data_idx == DMAP_EMPTY){ // if the entry is empty, the key is not in the hashmap
             return DMAP_INVALID;
         }
-        if(d->table[idx].data_idx != DMAP_DELETED) {
-            if(d->table[idx].hash == hash && keys_match(d->table, idx, key, key_size, d->key_type)){
+        if(d->table[idx].data_idx != DMAP_DELETED && d->table[idx].hash == hash) {
+            if(keys_match(d->table, idx, key, key_size, d->key_type)){
                 return idx;
             }
         }
@@ -718,13 +724,6 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size, bool is_string){
         snprintf(err, 256, "Key is not the correct type/size, it should be %u bytes, but is %zu bytes.\n", d->key_size, key_size);
         dmap_error_handler(err);
     }
-    // get a fresh data slot
-    // size_t key_already_exists = dmap__get_entry_index(dmap, key, key_size);
-    // if(key_already_exists != DMAP_INVALID){
-    //     d->returned_idx = key_already_exists;
-    //     return;
-    // }
-
     u64 hash = dmap_generate_hash(key, key_size, d->hash_seed);
     // todo: finish implementing the union idea - starting with the hash we already use.
     size_t idx = dmap_find_slot(dmap, key, key_size, hash);
@@ -738,17 +737,15 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size, bool is_string){
         d->len += 1;
 
         DmapTable *entry = &d->table[idx];
+        entry->hash = hash;
+        entry->data_idx = d->returned_idx;
         switch (d->key_type) {
             case DMAP_U64: {
-                entry->hash = hash;
-                entry->data_idx = d->returned_idx;
                 entry->key = 0;  // zero-out first
                 memcpy(&entry->key, key, key_size);
                 break;
             }
             case DMAP_STR:{
-                entry->hash = hash;
-                entry->data_idx = d->returned_idx;
                 entry->rehash = dmap_fnv_64(key, key_size, hash);  // rehash
                 break;
             }
@@ -821,6 +818,7 @@ static u64 dmap_fnv_64(void *buf, size_t len, u64 hval) { // fnv_64a unsigned ch
     }
     return hval;
 }
+// - rapidhash source repository: https://github.com/Nicoshev/rapidhash
 
 /*
  * rapidhash - Very fast, high quality, platform-independent hashing algorithm.

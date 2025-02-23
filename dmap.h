@@ -24,8 +24,7 @@ extern "C" {
 #define DARR_INITIAL_CAPACITY 16
 #define DMAP_INITIAL_CAPACITY 16
 #define DARR_GROWTH_MULTIPLIER 2.0f
-#define DMAP_GROWTH_MULTIPLIER 2.0f
-#define DMAP_HASHTABLE_MULTIPLIER 1.5f
+#define DMAP_LOAD_FACTOR 0.5f
 
 typedef enum {
     ALLOC_MALLOC,  // malloc/realloc
