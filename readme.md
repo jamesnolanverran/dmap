@@ -5,15 +5,17 @@
 ## 🚀 Super Easy – Zero Setup Required
 
 ```c
-// Declare a dynamic hashmap – use any type
+// Declare a dynamic hashmap of any type, `int` in this case.
 int *my_dmap = NULL;
 
-// Insert a value using any key type
-int key = 1;
-dmap_insert(my_dmap, &key, 42);
+// Insert the value 33. You can use any key type.
+int key = 13;
+dmap_insert(my_dmap, &key, 33);
 
-// Retrieve the value
+// Retrieve the value.
 int *value = dmap_get(my_dmap, &key);
+
+printf("result: %d\n", *value); // output: result: 33
 
 ```
 - **No manual setup** → Just declare and use.  
@@ -61,8 +63,7 @@ An optional initialization function allows switching between these models.
 - Currently 64-bit Only
 - Currently Not Thread-Safe
 - Untested on macOS
-- Rehashing the table is not yet optimized
-- Keys are not type-checked. Key sizes are compared at runtime but it is up to users to ensure key types are consistent.
+- Key sizes are compared at runtime. It is up to users to ensure key types are consistent.
 
 ## Also Includes:
 
@@ -86,7 +87,7 @@ int main() {
     // Insert values into the hashmap using integer keys
     int key_1 = 1;
     int key_2 = 2;
-    dmap_insert(my_dmap, &key_1, 42);   
+    dmap_insert(my_dmap, &key_1, 33);   
     dmap_insert(my_dmap, &key_2, 13);   
 
     // Retrieve a *value using an integer key
@@ -190,7 +191,7 @@ int main() {
     if (!arr) {
         // handle error
     }
-    arr[0] = 42;
+    arr[0] = 33;
     printf("First value: %d\n", arr[0]);
 
     // Free virtual memory
