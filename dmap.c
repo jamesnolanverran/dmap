@@ -389,18 +389,17 @@ void *darr__grow(void *arr, size_t elem_size) {
     }
     DarrHdr *dh = darr__hdr(arr);
     DarrHdr *new_hdr = NULL;
-    size_t old_cap = darr_cap(arr);
+    size_t old_cap = dh->cap;
+    size_t total_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
+    size_t max_capacity = (size_t)UINT32_MAX;
+    if(total_size_in_bytes > max_capacity){
+        dmap_error_handler("Error: Max size exceeded\n");
+    }
     switch (dh->alloc_type) 
     {
         case ALLOC_VIRTUAL: 
         {
             size_t additional_bytes = (size_t)((float)old_cap * (DARR_GROWTH_MULTIPLIER - 1.0f) * elem_size);
-
-            size_t total_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
-            size_t max_capacity = (size_t)UINT32_MAX;
-            if(total_size_in_bytes > max_capacity){
-                dmap_error_handler("Error: Max size exceeded\n");
-            }
             AllocInfo alloc_info = *dh->alloc_info;
             if(!v_alloc_committ(&alloc_info, additional_bytes)) {
                 dmap_error_handler("Allocation failed 2");
@@ -411,19 +410,14 @@ void *darr__grow(void *arr, size_t elem_size) {
         }
         case ALLOC_MALLOC: 
         {
-            size_t new_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
-            size_t max_capacity = (size_t)UINT32_MAX;
-            if(new_size_in_bytes > max_capacity){
-                dmap_error_handler("Error: Max size exceeded\n");
-            }
-            new_hdr = realloc(dh, new_size_in_bytes);
+            new_hdr = realloc(dh, total_size_in_bytes);
             if(!new_hdr) {
                 dmap_error_handler("Out of memory 5");
             }
             break;
         }
     }
-    new_hdr->cap += (u32)old_cap;
+    new_hdr->cap = (u32)((float)old_cap * DARR_GROWTH_MULTIPLIER);
     assert(((size_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // Ensure alignment
     return &new_hdr->data;
 }
