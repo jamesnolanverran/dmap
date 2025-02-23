@@ -67,8 +67,8 @@ void darr__free(void *a);
 
 #define darr_push(a, ...) (darr_fit((a), 1 + darr_len(a)), (a)[darr__hdr(a)->len] = (__VA_ARGS__), &(a)[darr__hdr(a)->len++]) // returns ptr 
 
-// optional init: allow users to define initial capacity
-// myarr = darr_init(myarr, 0); //  zero's indicates the user will use default value
+// optional init: allow users to define initial capacity and allocation; use ALLOC_VIRTUAL for stable pointers (at some performance and memory cost) 
+// myarr = darr_init(myarr, 0, ALLOC_VIRTUAL); //  zero's indicates the user will use default value
 #define darr_init(a, initial_capacity, alloc_type) (a) = darr__init(a, initial_capacity, sizeof(*(a)), alloc_type) 
 
 #define darr_pop(a) ((a)[darr__hdr(a)->len-- - 1])  // it's up to the user to null check etc.
@@ -126,9 +126,8 @@ static inline size_t dmap_cap(void *d){ return d ? dmap__hdr(d)->cap : 0; }
 
 // Helper Macros - Utilized by other macros.
 // =========================================
-// workaround - get an index stored in d->returned_idx
+// workaround - allows macros to pass a value
 #define dmap__ret_idx(d) (dmap__hdr(d)->returned_idx) // DMAP_EMPTY by default
-
 // if the number is greater than capacity resize
 #define dmap__fit(d, n) ((n) <= dmap_cap(d) ? 0 : ((d) = dmap__grow((d), sizeof(*(d)))))
 #define dmap__kstr_fit(d, n) ((n) <= dmap_cap(d) ? 0 : ((d) = dmap__kstr_grow((d), sizeof(*(d)))))
@@ -143,34 +142,30 @@ static inline size_t dmap_cap(void *d){ return d ? dmap__hdr(d)->cap : 0; }
 // returns the index in the data array where the value is stored.
 // Parameters:
 // - 'd' is the hashmap from which to retrieve the value, effectively an array of v's.
-// - 'k' key for the value. Keys can be any type and are not stored.
+// - 'k' key for the value. Keys can be any type 1,2,4,8 bytes; use dmap_kstr_insert for strings and non-builtin types
 // - 'v' value 
 #define dmap_insert(d, k, v) (dmap__fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), sizeof(*(k)), false), ((d)[dmap__ret_idx(d)] = (v)), dmap__ret_idx(d)) 
-
-// same as above but uses a string as key value8
+// same as above but uses a string as key values
 #define dmap_kstr_insert(d, k, v, key_size) (dmap__kstr_fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), (key_size), true), ((d)[dmap__ret_idx(d)] = (v)), dmap__ret_idx(d)) 
 
-// Returns: A pointer to the value corresponding to 'k' in 'd', or NULL if the key is not found.
+// Returns: A pointer to the value corresponding to 'k' in 'd', or NULL if the key is not found. Use ALLOC_VIRTUAL for stable pointers (at some performance and memory cost) 
 #define dmap_get(d,k) (dmap__find_data_idx((d), (k), sizeof(*(k))) ? &(d)[dmap__ret_idx(d)] : NULL)  
-
 // Returns: A pointer to the value corresponding to 'k' in 'd', or NULL if the key is not found.
 #define dmap_kstr_get(d,k, key_size) (dmap__find_data_idx((d), (k), (key_size)) ? &(d)[dmap__ret_idx(d)] : NULL)  
 
 // returns the data index of the deleted item or DMAP_INVALID (SIZE_MAX). 
 // The user should mark deleted data as invalid if the user intends to iterate over the data array.
 #define dmap_delete(d,k) (dmap__delete(d, k, sizeof(*(k)))) 
+// returns index to deleted data or DMAP_INVALID
+size_t dmap_kstr_delete(void *dmap, void *key, size_t key_size); 
 
-// returns index to data or DMAP_INVALID
+// returns index to data or DMAP_INVALID; indices are always stable
 // index can then be used to retrieve the value: d[idx]
 #define dmap_get_idx(d,k) (dmap__get_idx(d, k, sizeof(*(k)))) 
-
-#define dmap_free(d) ((d) ? (dmap__free(d), (d) = NULL, 1) : 0)
-
 // same as dmap_get_idx but for keys that are strings. 
 size_t dmap_kstr_get_idx(void *dmap, void *key, size_t key_size); 
 
-// returns index to deleted data or DMAP_INVALID
-size_t dmap_kstr_delete(void *dmap, void *key, size_t key_size); 
+#define dmap_free(d) ((d) ? (dmap__free(d), (d) = NULL, 1) : 0)
 
 // for iterating directly over the entire data array, including items marked as deleted
 size_t dmap_range(void *dmap); 
