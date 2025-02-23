@@ -694,11 +694,9 @@ static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
         if(d->table[idx].data_idx == DMAP_EMPTY){ // if the entry is empty, the key is not in the hashmap
             return DMAP_INVALID;
         }
-        if(d->table[idx].data_idx != DMAP_EMPTY && d->table[idx].data_idx != DMAP_DELETED) {
-            if(d->table[idx].hash == hash){
-                if(keys_match(d->table, idx, key, key_size, d->key_type)){
-                    return idx;
-                }
+        if(d->table[idx].data_idx != DMAP_DELETED) {
+            if(d->table[idx].hash == hash && keys_match(d->table, idx, key, key_size, d->key_type)){
+                return idx;
             }
         }
         idx = (idx + 1) & (d->hash_cap - 1); // move to the next index, wrapping around to the start if necessary

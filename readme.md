@@ -23,7 +23,9 @@ printf("result: %d\n", *value); // output: result: 33
 - **Flexible key types** → Works with integers, strings, and more.  
 - **Automatic memory management** → Grows dynamically as needed.  
 
-Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS support is untested.)
+## Performance
+- Dmap is designed for simplicity and ease of use, while still outperforming widely-used hashmaps like uthash and std::unordered_map.
+- [UDB3](https://github.com/attractivechaos/udb3) benchmarks and my own testing show that **dmap is 30% to 40% faster than uthash**.
 
 ## Features
 
@@ -33,14 +35,17 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 - good performance
 - stable pointers
 
----
+Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS support is untested.)
 
-## Performance
-- The library is designed for **ease of use** while maintaining strong performance. 
+---
 
 ## Hash Collisions
 - The library stores **raw key bytes** for 1, 2, 4 and 8 bytes keys. If a hash collision occurs, keys are compared directly.  
 - For string and custom struct keys, **two 64-bit hashes** are stored instead of the key. While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible. Future versions will make improvements here.
+
+## Error Handling
+- By default, memory allocation failures trigger an error and exit().
+- A custom error handler can be set using `dmap_set_error_handler` to handle allocation failures gracefully.
 
 ## Memory Management
 The dmap and darr libs support two memory management models:
@@ -53,10 +58,6 @@ The dmap and darr libs support two memory management models:
    - Uses `VirtualAlloc` or `mmap` to reserve and commit memory, providing stable pointers and avoiding reallocations.
 
 An optional initialization function allows switching between these models.
-
-## Error Handling
-- By default, memory allocation failures trigger an error and exit().
-- A custom error handler can be set using `dmap_set_error_handler` to handle allocation failures gracefully.
 
 ## Limitations
 
@@ -97,17 +98,17 @@ int main() {
     }
     // ================================
     // declare a hashmap that uses strings as keys
-    int *my_str_dmap = NULL;
+    int *my_kstr_dmap = NULL;
     // Use a C-string as key
     char *str_key = "my_key";
 
     // Optional: Initialize the key-string hashmap
-    dmap_str_init(my_dmap, 1024 * 1024, ALLOC_MALLOC); 
+    dmap_kstr_init(my_kstr_dmap, 1024 * 1024, ALLOC_MALLOC); 
     // Insert a value using a string key
-    dmap_kstr_insert(my_str_dmap, str_key, 33, strlen(str_key)); // string keys need length param
+    dmap_kstr_insert(my_kstr_dmap, str_key, 33, strlen(str_key)); // string keys need length param
 
     // Retrieve a value using a string key
-    value = dmap_kstr_get(my_str_dmap, str_key, strlen(str_key));
+    value = dmap_kstr_get(my_kstr_dmap, str_key, strlen(str_key));
     if (value) {
         printf("Value for key 'str_key': %d\n", *value);  
     }
