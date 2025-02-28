@@ -29,7 +29,8 @@
             } while (0)
     #endif // common_assert_failed
 #else
-    #include <assert.h>
+    // #include <assert.h>
+    #define assert
 #endif
 
 #if defined(_MSC_VER) || defined(_WIN32)
@@ -318,6 +319,9 @@ bool v_alloc_free(AllocInfo* alloc_info) {
 // MARK: DARR
 // /////////////////////////////////////////////
 // /////////////////////////////////////////////
+
+#define DARR_MAX_CAPACITY ((size_t)UINT32_MAX - 2)
+
 void darr__free(void *arr){ 
     DarrHdr *a = darr__hdr(arr);
     switch (a->alloc_type) 
@@ -343,9 +347,11 @@ void *darr__init(void *arr, size_t initial_capacity, size_t elem_size, AllocType
     DarrHdr *new_hdr = NULL;
     size_t new_cap = MAX(DARR_INITIAL_CAPACITY, initial_capacity); 
     size_t size_in_bytes = offsetof(DarrHdr, data) + (new_cap * elem_size);
-    size_t max_size = (size_t)UINT32_MAX - 2;
-    if(size_in_bytes > max_size){
+    if(new_cap > DARR_MAX_CAPACITY){
         dmap_error_handler("Error: Max size exceeded\n");
+    }
+    if(size_in_bytes > DARR_DEFAULT_MAX_SIZE){
+        dmap_error_handler("Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overied default.");
     }
     switch (alloc_type) 
     {
@@ -392,9 +398,11 @@ void *darr__grow(void *arr, size_t elem_size) {
     DarrHdr *new_hdr = NULL;
     size_t old_cap = dh->cap;
     size_t total_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
-    size_t max_capacity = (size_t)UINT32_MAX - 2;
-    if(total_size_in_bytes > max_capacity){
+    if((size_t)(float)old_cap * DARR_GROWTH_MULTIPLIER > DARR_MAX_CAPACITY){
         dmap_error_handler("Error: Max size exceeded\n");
+    }
+    if(total_size_in_bytes > DARR_DEFAULT_MAX_SIZE){
+        dmap_error_handler("Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overied default.");
     }
     switch (dh->alloc_type) 
     {
@@ -438,7 +446,8 @@ struct DmapTable {
 };
 
 #define DMAP_EMPTY   UINT32_MAX
-#define DMAP_DELETED  (UINT32_MAX - 1)
+#define DMAP_DELETED (UINT32_MAX - 1)
+#define DMAP_MAX_CAPACITY ((size_t)UINT32_MAX - 2)
 
 
 // declare hash functions
@@ -472,18 +481,24 @@ static size_t dmap_find_slot(void *dmap, void *key, size_t key_size, u64 hash){
     DmapTable *table = d->table;
     // size_t idx = hash % hash_cap;
     // size_t idx = (hash ^ (hash >> 16)) % d->hash_cap;
-    size_t idx = hash & (d->hash_cap - 1);
+    u32 idx = hash & (d->hash_cap - 1);
     size_t j = d->hash_cap;
+    u32 result = DMAP_EMPTY;
     while(true){
         assert(j-- != 0); // unreachable - suggests there were no empty slots
-        if(d->table[idx].data_idx == DMAP_EMPTY) return idx;
-        if(d->table[idx].hash == hash){
+        if(d->table[idx].data_idx == DMAP_EMPTY){
+            result = idx;
+            break;
+        }
+        if(d->table[idx].data_idx != DMAP_DELETED && d->table[idx].hash == hash){
             if(keys_match(table, idx, key, key_size, d->key_type)){
-                return idx;
+                result = idx;
+                break;
             }
         }
         idx = (idx + 1) & (d->hash_cap - 1);
     }
+    return result;
 }
 // grows the entry array of the hashmap to accommodate more elements
 static void dmap_grow_table(void *dmap, size_t new_hash_cap, size_t old_hash_cap) {
@@ -526,9 +541,12 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     size_t new_hash_cap = old_hash_cap * 2;
     size_t new_cap = (size_t)((float)new_hash_cap * DMAP_LOAD_FACTOR);
     size_t total_size_in_bytes = offsetof(DmapHdr, data) + (new_cap * elem_size);
-    size_t max_size = (size_t)UINT32_MAX - 2;
-    if (total_size_in_bytes > max_size) {
+
+    if (new_cap > DMAP_MAX_CAPACITY) {
         dmap_error_handler("Error: Max size exceeded\n");
+    }
+    if(total_size_in_bytes > DMAP_DEFAULT_MAX_SIZE){
+        dmap_error_handler("Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overied default.");
     }
     switch (dh->alloc_type) 
     {
@@ -562,19 +580,28 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     return new_hdr->data; // return the aligned data pointer
 }
 
-static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t elem_size, AllocType alloc_type, bool is_string){
+static void *dmap__init_internal(void *dmap, size_t capacity, size_t elem_size, AllocType alloc_type, bool is_string){
     if(dmap) {
         dmap_error_handler("dmap_init: dmap already initialized, argument must be null");
     }
     DmapHdr *new_hdr = NULL;
 
-    initial_capacity = MAX(DMAP_INITIAL_CAPACITY, initial_capacity);
-    size_t initial_hash_cap = next_power_of_2(initial_capacity);
-    while ((size_t)((float)initial_hash_cap * DMAP_LOAD_FACTOR) < initial_capacity) {
-        initial_hash_cap *= 2;
+    capacity = MAX((size_t)DMAP_INITIAL_CAPACITY, capacity);
+    size_t table_capacity = next_power_of_2(capacity);
+    while ((size_t)((float)table_capacity * DMAP_LOAD_FACTOR) < capacity) {
+        if (table_capacity > SIZE_MAX / 2) {  // Prevent overflow
+            dmap_error_handler("Error: exceeded max capacity");
+        }
+        table_capacity *= 2;
     }
-    initial_capacity = (size_t)((float)initial_hash_cap * DMAP_LOAD_FACTOR);
-    size_t size_in_bytes = offsetof(DmapHdr, data) + (initial_capacity * elem_size);
+    capacity = (size_t)((float)table_capacity * DMAP_LOAD_FACTOR);
+    size_t size_in_bytes = offsetof(DmapHdr, data) + (capacity * elem_size);
+    if(capacity > DMAP_MAX_CAPACITY){
+        dmap_error_handler("Error: Max size exceeded\n");
+    }
+    if(size_in_bytes > DMAP_DEFAULT_MAX_SIZE){
+        dmap_error_handler("Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overied default.");
+    }
     switch (alloc_type) 
     {
         case ALLOC_VIRTUAL:
@@ -606,8 +633,8 @@ static void *dmap__init_internal(void *dmap, size_t initial_capacity, size_t ele
     }
     new_hdr->alloc_type = alloc_type;
     new_hdr->len = 0;
-    new_hdr->cap = (u32)initial_capacity;
-    new_hdr->hash_cap = (u32)initial_hash_cap;
+    new_hdr->cap = (u32)capacity;
+    new_hdr->hash_cap = (u32)table_capacity;
     new_hdr->returned_idx = DMAP_EMPTY;
     new_hdr->table = NULL;
     new_hdr->free_list = NULL;
@@ -667,26 +694,29 @@ void dmap__free(void *dmap){
         }
     }
 }
+
 static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
-    if(dmap_cap(dmap)==0) {
-        return DMAP_INVALID; // check if the hashmap is empty or NULL
-    }
-    DmapHdr *d = dmap__hdr(dmap); // retrieve the header of the hashmap for internal structure access
-    u64 hash = dmap_generate_hash(key, key_size, d->hash_seed); // generate a hash value for the given key
-    size_t idx = hash & (d->hash_cap - 1);
-    size_t j = d->hash_cap; // counter to ensure the loop doesn't iterate more than the capacity of the hashmap
-    while(true) { // loop to search for the key in the hashmap
-        assert(j-- != 0); // unreachable -- suggests table is full
-        if(d->table[idx].data_idx == DMAP_EMPTY){ // if the entry is empty, the key is not in the hashmap
-            return DMAP_INVALID;
-        }
-        if(d->table[idx].data_idx != DMAP_DELETED && d->table[idx].hash == hash) {
-            if(keys_match(d->table, idx, key, key_size, d->key_type)){
-                return idx;
+    size_t result = DMAP_INVALID;
+    if(dmap_cap(dmap)!=0) {
+        DmapHdr *d = dmap__hdr(dmap); // retrieve the header of the hashmap for internal structure access
+        u64 hash = dmap_generate_hash(key, key_size, d->hash_seed); // generate a hash value for the given key
+        size_t idx = hash & (d->hash_cap - 1);
+        size_t j = d->hash_cap; // counter to ensure the loop doesn't iterate more than the capacity of the hashmap
+        while(true) { // loop to search for the key in the hashmap
+            assert(j-- != 0); // unreachable -- suggests table is full
+            if(d->table[idx].data_idx == DMAP_EMPTY){ // if the entry is empty, the key is not in the hashmap
+                break;
             }
+            if(d->table[idx].data_idx != DMAP_DELETED && d->table[idx].hash == hash) {
+                if(keys_match(d->table, idx, key, key_size, d->key_type)){
+                    result = idx;
+                    break;
+                }
+            }
+            idx = (idx + 1) & (d->hash_cap - 1); // move to the next index, wrapping around to the start if necessary
         }
-        idx = (idx + 1) & (d->hash_cap - 1); // move to the next index, wrapping around to the start if necessary
     }
+    return result;
 }
 void dmap__insert_entry(void *dmap, void *key, size_t key_size, bool is_string){ 
     DmapHdr *d = dmap__hdr(dmap);
@@ -710,7 +740,6 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size, bool is_string){
 
     if(d->table[idx].data_idx != DMAP_EMPTY && d->table[idx].data_idx != DMAP_DELETED){
         d->returned_idx = d->table[idx].data_idx;
-        return;
     }
     else {
         d->returned_idx = darr_len(d->free_list) ? darr_pop(d->free_list) : d->len;
@@ -735,6 +764,7 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size, bool is_string){
             }
         }
     }
+    return;
 }
 // returns: size_t - The index of the entry if the key is found, or DMAP_INVALID if the key is not present
 bool dmap__find_data_idx(void *dmap, void *key, size_t key_size){

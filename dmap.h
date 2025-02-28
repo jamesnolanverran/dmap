@@ -20,6 +20,13 @@ extern "C" {
 
 #define DATA_ALIGNMENT 16
 
+#ifndef DARR_DEFAULT_MAX_SIZE
+    #define DARR_DEFAULT_MAX_SIZE (1ULL << 31) // 2GB for testing
+#endif // DARR_DEFAULT_MAX_SIZE
+#ifndef DMAP_DEFAULT_MAX_SIZE
+    #define DMAP_DEFAULT_MAX_SIZE (1ULL << 31) // 2GB for testing
+#endif // DMAP_DEFAULT_MAX_SIZE
+
 #define MAX_ARENA_CAPACITY (1024 * 1024 * 1024) 
 #define DARR_INITIAL_CAPACITY 16
 #define DMAP_INITIAL_CAPACITY 16

@@ -25,7 +25,7 @@ printf("result: %d\n", *value); // output: result: 33
 
 ## Performance
 - Dmap is designed for simplicity and ease of use, while still outperforming widely-used hashmaps like uthash and std::unordered_map.
-- [UDB3](https://github.com/attractivechaos/udb3) benchmarks and my own testing show that **dmap is 30% to 40% faster than uthash**.
+- [UDB3](https://github.com/attractivechaos/udb3) benchmarks and my own testing show that **dmap is up to 30% to 40% faster than uthash**.
 
 ## Features
 
