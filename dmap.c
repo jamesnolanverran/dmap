@@ -1,10 +1,10 @@
 #include "dmap.h"
 #include <stdlib.h> 
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 
 #ifdef DMAP_DEBUG
+#include <stdio.h>
     #if defined(_MSC_VER) || defined(_WIN32)
         #include <intrin.h>  
         #define DEBUGBREAK() __debugbreak()
@@ -84,7 +84,7 @@ uint64_t dmap_generate_seed() {
 
     return seed;
 }
-
+// 
 #ifndef MAX
 #define MAX(x, y) ((x) >= (y) ? (x) : (y))
 #endif
@@ -105,9 +105,7 @@ typedef uint32_t    u32;
 typedef uint64_t    u64;
 
 // /////////////////////////////////////////////
-// /////////////////////////////////////////////
 // MARK: ERR HANDLER
-// /////////////////////////////////////////////
 // /////////////////////////////////////////////
 
 // todo: improve default error handler 
@@ -120,320 +118,9 @@ static void (*dmap_error_handler)(char* err_msg) = dmap_default_error_handler;
 void dmap_set_error_handler(void (*handler)(char* err_msg)) {
     dmap_error_handler = handler ? handler : dmap_default_error_handler; // fallback to default
 }
-// /////////////////////////////////////////////
-// /////////////////////////////////////////////
-// PLATFORM ALLOCATOR IMPL
-// /////////////////////////////////////////////
-// /////////////////////////////////////////////
 
-typedef struct {
-    void *(*reserve)(size_t size);   
-    bool (*commit)(void *addr, size_t total_size, size_t additional_bytes);    
-    bool (*decommit)(void *addr, size_t size);  
-    bool (*release)(void *addr, size_t size);  
-    size_t page_size;               // System page size
-} V_Allocator;
-
-// MARK: WIN32
-#if defined(_WIN32)
-    #define WIN32_LEAN_AND_MEAN
-    #include <windows.h>
-
-    static void *v_alloc_win_reserve(size_t size);
-    static bool v_alloc_win_commit(void *addr, size_t total_size, size_t additional_bytes);
-    static bool v_alloc_win_decommit(void *addr, size_t size);
-    static bool v_alloc_win_release(void *addr, size_t size);
-
-    V_Allocator v_alloc = {
-        .reserve = v_alloc_win_reserve,
-        .commit = v_alloc_win_commit,
-        .decommit = v_alloc_win_decommit,
-        .release = v_alloc_win_release,
-        .page_size = 0,
-    };
-    static size_t v_alloc_win_get_page_size(){
-        SYSTEM_INFO sys_info;
-        GetSystemInfo(&sys_info);
-        return (size_t)sys_info.dwPageSize;
-    }
-    static void *v_alloc_win_reserve(size_t size) {
-        if(v_alloc.page_size == 0){
-            v_alloc.page_size = v_alloc_win_get_page_size();
-        }
-        return VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
-    }
-    static bool v_alloc_win_commit(void *addr, size_t total_size, size_t additional_bytes) {
-        (void)additional_bytes;
-        void *result = VirtualAlloc(addr, total_size, MEM_COMMIT, PAGE_READWRITE);
-        return result ? true : false;
-    }
-    static bool v_alloc_win_decommit(void *addr, size_t extra_size) {
-        // VirtualFree(base_addr + 1MB, MEM_DECOMMIT, extra_size);
-    /* 
-        "The VirtualFree function can decommit a range of pages that are in 
-        different states, some committed and some uncommitted. This means 
-        that you can decommit a range of pages without first determining 
-        the current commitment state of each page."
-    */
-        BOOL success = VirtualFree(addr, MEM_DECOMMIT, (DWORD)extra_size);
-        return success ? true : false;
-    }
-    static bool v_alloc_win_release(void *addr, size_t size) {
-        (void)size; 
-        return VirtualFree(addr, 0, MEM_RELEASE);
-    }
-
-   // MARK: LINUX
-#elif defined(__linux__) || defined(__APPLE__)
-    #include <unistd.h>
-    #include <sys/mman.h>
-
-    static void *v_alloc_posix_reserve(size_t size);
-    static bool v_alloc_posix_commit(void *addr, size_t total_size, size_t additional_bytes);
-    static bool v_alloc_posix_decommit(void *addr, size_t extra_size);
-    static bool v_alloc_posix_release(void *addr, size_t size);
-
-    V_Allocator v_alloc = {
-        .reserve = v_alloc_posix_reserve,
-        .commit = v_alloc_posix_commit,
-        .decommit = v_alloc_posix_decommit,
-        .release = v_alloc_posix_release,
-        .page_size = 0,
-    };
-    static size_t v_alloc_posix_get_page_size(){
-        s32 page_size = sysconf(_SC_PAGESIZE);
-        if (page_size <= 0) {
-            //todo: error ?
-            return 0;
-        }
-        return (size_t)page_size;
-    }
-    static void *v_alloc_posix_reserve(size_t size) {
-        if (v_alloc.page_size == 0) {
-            v_alloc.page_size = v_alloc_posix_get_page_size();
-        }
-        void *ptr = mmap(NULL, size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
-        return ptr == MAP_FAILED ? NULL : ptr;
-    }
-    static bool v_alloc_posix_commit(void *addr, size_t total_size, size_t additional_bytes) {
-        addr = (char *)addr + total_size - additional_bytes;
-        s32 result = mprotect(addr, additional_bytes, PROT_READ | PROT_WRITE);
-        return result ? true : false;
-    }
-    static bool v_alloc_posix_decommit(void *addr, size_t extra_size) {
-        s32 result = madvise(addr, extra_size, MADV_DONTNEED);
-        if(result == 0){
-            result = mprotect(addr, extra_size, PROT_NONE);
-        }
-        return result == 0;
-    }
-    static bool v_alloc_posix_release(void *addr, size_t size) {
-        return munmap(addr, size) == 0 ? true : false;
-    }
-#else
-    #error "Unsupported platform"
-#endif
-// /////////////////////////////////////////////
-// /////////////////////////////////////////////
-// MARK: v_alloc
-// /////////////////////////////////////////////
-// /////////////////////////////////////////////
-
-// returns true on success, false on fail
-bool v_alloc_reserve(AllocInfo *alloc_info, size_t reserve_size) {
-    alloc_info->base = (char*)v_alloc.reserve(reserve_size);
-    if (alloc_info->base == NULL) {
-        return false; // initialization failed
-    }
-    alloc_info->ptr = alloc_info->base;
-    alloc_info->end = alloc_info->base; // because we're only reserving
-    alloc_info->reserved_size = reserve_size;
-    alloc_info->page_size = v_alloc.page_size;
-    return true; 
-}
-// commits initial size or grows alloc_info by additional size, returns NULL on fail
-void* v_alloc_committ(AllocInfo *alloc_info, size_t additional_bytes) {
-    if(additional_bytes == 0){ // we will consider this an error
-        return NULL;
-    }
-    additional_bytes = ALIGN_UP(additional_bytes, DATA_ALIGNMENT);
-    if (additional_bytes > (size_t)(alloc_info->end - alloc_info->ptr)) {
-        if(alloc_info->base == 0){ // reserve default
-            if(!v_alloc_reserve(alloc_info, MAX_ARENA_CAPACITY)){
-                return NULL; // unable to reserve memory
-            }
-        }
-        // internally we align_up to page_size
-        size_t adjusted_additional_bytes = ALIGN_UP(additional_bytes, alloc_info->page_size);
-
-        if (alloc_info->ptr + adjusted_additional_bytes > alloc_info->base + alloc_info->reserved_size) {
-            return NULL; // out of reserved memory
-        }
-        size_t new_size = alloc_info->end - alloc_info->base + adjusted_additional_bytes;
-        s32 result = v_alloc.commit(alloc_info->base, new_size, adjusted_additional_bytes);
-        if (result == -1) {
-            return NULL; // failed commit
-        }
-        alloc_info->end = alloc_info->base + new_size;
-    }
-    void* ptr = alloc_info->ptr;
-    alloc_info->ptr = alloc_info->ptr + additional_bytes; 
-    return ptr; 
-}
-void v_alloc_reset(AllocInfo *alloc_info) {
-    // reset the pointer to the start of the committed region
-    // todo: decommit
-    if(alloc_info){
-        alloc_info->ptr = alloc_info->base;
-    }
-}
-bool v_alloc_decommit(AllocInfo *alloc_info, size_t extra_size) {
-    if (!alloc_info || extra_size == 0) {
-        return false; // invalid input
-    }
-    // ensure extra_size is aligned to the page size
-    extra_size = ALIGN_UP(extra_size, alloc_info->page_size);
-    // ensure extra_size does not exceed the committed memory size
-    if (extra_size > (size_t)(alloc_info->end - alloc_info->base)) {
-        return false; // cannot decommit more memory than is committed
-    }
-    // ensure the decommit region is page-aligned
-    char *decommit_start = ALIGN_DOWN_PTR(alloc_info->end - extra_size, alloc_info->page_size);
-    // decommit the memory
-    bool result = v_alloc.decommit(decommit_start, extra_size);
-    if (result) {
-        alloc_info->end = decommit_start;
-    }
-    return result;
-}
-bool v_alloc_free(AllocInfo* alloc_info) {
-    if (alloc_info->base == NULL) {
-        return false; // nothing to free
-    }
-    return v_alloc.release(alloc_info->base, alloc_info->reserved_size);
-}
-
-
-// /////////////////////////////////////////////
-// /////////////////////////////////////////////
-// MARK: DARR
-// /////////////////////////////////////////////
-// /////////////////////////////////////////////
-
-#define DARR_MAX_CAPACITY ((size_t)UINT32_MAX - 2)
-
-void darr__free(void *arr){ 
-    DarrHdr *a = darr__hdr(arr);
-    switch (a->alloc_type) 
-    {
-        case ALLOC_VIRTUAL:{
-            AllocInfo *temp = a->alloc_info;
-            v_alloc_free(a->alloc_info);
-            free(temp);
-            break;
-        }
-        case ALLOC_MALLOC:{
-            free(a);
-            break;
-        }
-    }
-}
-// optionally specify an initial capacity and/or an allocation type. Default (ALLOC_MALLOC or 0) uses malloc/realloc
-// ALLOC_VIRTUAL uses a reserve/commit strategy, virtualalloc on win32, w/ stable pointers
-void *darr__init(void *arr, size_t initial_capacity, size_t elem_size, AllocType alloc_type){
-    if(arr) {
-        dmap_error_handler("darr_init: array already initialized (argument must be null)");
-    }
-    DarrHdr *new_hdr = NULL;
-    size_t new_cap = MAX(DARR_INITIAL_CAPACITY, initial_capacity); 
-    size_t size_in_bytes = offsetof(DarrHdr, data) + (new_cap * elem_size);
-    if(new_cap > DARR_MAX_CAPACITY){
-        dmap_error_handler("Error: Max size exceeded\n");
-    }
-    if(size_in_bytes > DARR_DEFAULT_MAX_SIZE){
-        dmap_error_handler("Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overied default.");
-    }
-    switch (alloc_type) 
-    {
-        case ALLOC_VIRTUAL:
-        {
-            #if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
-                dmap_error_handler("ALLOC_VIRTUAL not supported on this platform; use ALLOC_MALLOC");
-            #endif
-            AllocInfo *alloc_info = (AllocInfo*)malloc(sizeof(AllocInfo));
-            if(!alloc_info){
-                dmap_error_handler("Allocation failed 0");
-            }
-            memset(alloc_info, 0, sizeof(AllocInfo));
-            if(!v_alloc_committ(alloc_info, size_in_bytes)) {
-                dmap_error_handler("Allocation failed 1");
-            }
-            new_hdr = (DarrHdr*)(alloc_info->base);
-            new_hdr->alloc_info = alloc_info; 
-            assert((size_t)(alloc_info->ptr - alloc_info->base) == offsetof(DarrHdr, data) + (new_cap * elem_size));
-            break;
-        }
-        case ALLOC_MALLOC:
-        {
-            new_hdr = (DarrHdr*)malloc(size_in_bytes);
-            if(!new_hdr) {
-                dmap_error_handler("Out of memory 4");
-            }
-            new_hdr->alloc_info = NULL;
-            break;
-        }
-    }
-    new_hdr->alloc_type = alloc_type;
-    new_hdr->len = 0;
-    new_hdr->cap = (u32)new_cap;
-
-    return new_hdr->data;
-}
-void *darr__grow(void *arr, size_t elem_size) { 
-    if (!arr) {
-        // when this is the case we just want the defaults
-        return darr__init(arr, 0, elem_size, ALLOC_MALLOC);
-    }
-    DarrHdr *dh = darr__hdr(arr);
-    DarrHdr *new_hdr = NULL;
-    size_t old_cap = dh->cap;
-    size_t total_size_in_bytes = offsetof(DarrHdr, data) + (size_t)((float)old_cap * (float)elem_size * DARR_GROWTH_MULTIPLIER);
-    if((size_t)(float)old_cap * DARR_GROWTH_MULTIPLIER > DARR_MAX_CAPACITY){
-        dmap_error_handler("Error: Max size exceeded\n");
-    }
-    if(total_size_in_bytes > DARR_DEFAULT_MAX_SIZE){
-        dmap_error_handler("Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overied default.");
-    }
-    switch (dh->alloc_type) 
-    {
-        case ALLOC_VIRTUAL: 
-        {
-            size_t additional_bytes = (size_t)((float)old_cap * (DARR_GROWTH_MULTIPLIER - 1.0f) * elem_size);
-            AllocInfo alloc_info = *dh->alloc_info;
-            if(!v_alloc_committ(&alloc_info, additional_bytes)) {
-                dmap_error_handler("Allocation failed 2");
-            }
-            new_hdr = (DarrHdr*)alloc_info.base;
-            *new_hdr->alloc_info = alloc_info;
-            break;
-        }
-        case ALLOC_MALLOC: 
-        {
-            new_hdr = realloc(dh, total_size_in_bytes);
-            if(!new_hdr) {
-                dmap_error_handler("Out of memory 5");
-            }
-            break;
-        }
-    }
-    new_hdr->cap = (u32)((float)old_cap * DARR_GROWTH_MULTIPLIER);
-    assert(((size_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // Ensure alignment
-    return &new_hdr->data;
-}
-// /////////////////////////////////////////////
 // /////////////////////////////////////////////
 // MARK: DMAP
-// /////////////////////////////////////////////
 // /////////////////////////////////////////////
 
 struct DmapTable {
@@ -463,6 +150,34 @@ static u64 dmap_generate_hash(void *key, size_t key_size, u64 seed) {
     return rapidhash_internal(key, key_size, seed, RAPIDHASH_SECRET);
 }
 
+void dmap_freelist_push(DmapHdr *dh, u32 index) {
+    if(!dh->free_list){
+        dh->free_list = malloc(sizeof(DmapFreeList));
+        if(!dh->free_list){
+            dmap_error_handler("malloc failed at freelist");
+        }
+        dh->free_list->cap = 16;
+        dh->free_list->len = 0;
+        dh->free_list->data = (u32*)malloc(dh->cap * sizeof(u32));
+        if(!dh->free_list->data){
+            dmap_error_handler("malloc failed at freelist");
+        }
+    }
+    if (dh->free_list->len == dh->free_list->cap) {
+        dh->free_list->cap = (dh->free_list->cap * 3) / 2 + 1;  
+        dh->free_list->data = (u32*)realloc(dh->free_list->data, dh->free_list->cap * sizeof(u32));
+        if(!dh->free_list->data){
+            dmap_error_handler("realloc failed at freelist");
+        }
+    }
+    dh->free_list->data[dh->free_list->len++] = index;
+}
+u32 dmap_freelist_pop(DmapHdr *dh) {
+    if (dh->free_list && dh->free_list->len > 0) {
+        return dh->free_list->data[--dh->free_list->len];
+    }
+    return DMAP_EMPTY;  // no free slots available
+}
 static bool keys_match(DmapTable *table, size_t idx, void *key, size_t key_size, KeyType key_type) {
     if(key_type == DMAP_U64){
         return memcmp(key, &table[idx].key, key_size) == 0;
@@ -470,35 +185,7 @@ static bool keys_match(DmapTable *table, size_t idx, void *key, size_t key_size,
     else if(key_type == DMAP_STR){
         return dmap_generate_hash(key, key_size, table[idx].hash) == table[idx].rehash;
     }
-    else {
-        dmap_error_handler("invalid key type");
-    }
     return false;
-}
-// return current or empty - for inserts - we can overwrite on insert
-static size_t dmap_find_slot(void *dmap, void *key, size_t key_size, u64 hash){
-    DmapHdr *d = dmap__hdr(dmap);
-    DmapTable *table = d->table;
-    // size_t idx = hash % hash_cap;
-    // size_t idx = (hash ^ (hash >> 16)) % d->hash_cap;
-    u32 idx = hash & (d->hash_cap - 1);
-    size_t j = d->hash_cap;
-    u32 result = DMAP_EMPTY;
-    while(true){
-        assert(j-- != 0); // unreachable - suggests there were no empty slots
-        if(d->table[idx].data_idx == DMAP_EMPTY){
-            result = idx;
-            break;
-        }
-        if(d->table[idx].data_idx != DMAP_DELETED && d->table[idx].hash == hash){
-            if(keys_match(table, idx, key, key_size, d->key_type)){
-                result = idx;
-                break;
-            }
-        }
-        idx = (idx + 1) & (d->hash_cap - 1);
-    }
-    return result;
 }
 // grows the entry array of the hashmap to accommodate more elements
 static void dmap_grow_table(void *dmap, size_t new_hash_cap, size_t old_hash_cap) {
@@ -515,9 +202,9 @@ static void dmap_grow_table(void *dmap, size_t new_hash_cap, size_t old_hash_cap
             if(d->table[i].data_idx == DMAP_EMPTY) continue;
             // size_t idx = (d->table[i].hash ^ (d->table[i].hash >> 16)) % new_hash_cap;
             size_t idx = d->table[i].hash & (new_hash_cap - 1);
-            size_t j = new_hash_cap;
+            // size_t j = new_hash_cap;
             while(true){
-                assert(j-- != 0); // unreachable, suggests no empty slot was found
+                // assert(j-- != 0); // unreachable, suggests no empty slot was found
                 if(new_table[idx].data_idx == DMAP_EMPTY){
                     new_table[idx] = d->table[i];
                     break;
@@ -537,38 +224,20 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     DmapHdr *dh = dmap__hdr(dmap);
     DmapHdr *new_hdr = NULL;
     size_t old_hash_cap = dh->hash_cap;
-    size_t old_cap = dh->cap;
     size_t new_hash_cap = old_hash_cap * 2;
     size_t new_cap = (size_t)((float)new_hash_cap * DMAP_LOAD_FACTOR);
     size_t total_size_in_bytes = offsetof(DmapHdr, data) + (new_cap * elem_size);
-
     if (new_cap > DMAP_MAX_CAPACITY) {
-        dmap_error_handler("Error: Max size exceeded\n");
+        dmap_error_handler("Error: Max capacity exceeded.\n");
     }
     if(total_size_in_bytes > DMAP_DEFAULT_MAX_SIZE){
-        dmap_error_handler("Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overied default.");
+        dmap_error_handler("Error: Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overide default.");
     }
-    switch (dh->alloc_type) 
-    {
-        case ALLOC_VIRTUAL: 
-        {
-            AllocInfo alloc_info = *dh->alloc_info;
-            size_t additional_bytes = (new_cap - old_cap) * elem_size;
-            if(!v_alloc_committ(&alloc_info, additional_bytes)) {
-                dmap_error_handler("Allocation failed 3");
-            }
-            new_hdr = (DmapHdr*)alloc_info.base;
-            *new_hdr->alloc_info = alloc_info;
-            break;
-        }
-        case ALLOC_MALLOC: 
-        {
-            new_hdr = realloc(dh, total_size_in_bytes);
-            if(!new_hdr) {
-                dmap_error_handler("Out of memory 2");
-            }
-            break;
-        }
+
+    new_hdr = dh->alloc(dh, total_size_in_bytes);
+
+    if(!new_hdr) {
+        dmap_error_handler("Out of memory 2");
     }
     // grow the table to fit into the newly allocated space
     dmap_grow_table(new_hdr->data, new_hash_cap, old_hash_cap); 
@@ -576,11 +245,11 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     new_hdr->cap = (u32)new_cap;
     new_hdr->hash_cap = (u32)new_hash_cap;
 
-    assert(((uintptr_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // ensure alignment
+    assert(((uintptr_t)&new_hdr->data & (DMAP_ALIGNMENT - 1)) == 0); // ensure alignment
     return new_hdr->data; // return the aligned data pointer
 }
 
-static void *dmap__init_internal(void *dmap, size_t capacity, size_t elem_size, AllocType alloc_type, bool is_string){
+static void *dmap__init_internal(void *dmap, size_t capacity, size_t elem_size, bool is_string, AllocatorFn alloc){
     if(dmap) {
         dmap_error_handler("dmap_init: dmap already initialized, argument must be null");
     }
@@ -597,76 +266,51 @@ static void *dmap__init_internal(void *dmap, size_t capacity, size_t elem_size, 
     capacity = (size_t)((float)table_capacity * DMAP_LOAD_FACTOR);
     size_t size_in_bytes = offsetof(DmapHdr, data) + (capacity * elem_size);
     if(capacity > DMAP_MAX_CAPACITY){
-        dmap_error_handler("Error: Max size exceeded\n");
+        dmap_error_handler("Error: Max capacity exceeded.\n");
     }
     if(size_in_bytes > DMAP_DEFAULT_MAX_SIZE){
-        dmap_error_handler("Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overied default.");
+        dmap_error_handler("Error: Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overide default.");
     }
-    switch (alloc_type) 
-    {
-        case ALLOC_VIRTUAL:
-        {
-            #if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
-                dmap_error_handler("ALLOC_VIRTUAL not supported on this platform; use ALLOC_MALLOC");
-            #endif
-            AllocInfo *alloc_info = (AllocInfo*)malloc(sizeof(AllocInfo));
-            if(!alloc_info){
-                dmap_error_handler("Allocation failed 0");
-            }
-            memset(alloc_info, 0, sizeof(AllocInfo));
-            if(!v_alloc_committ(alloc_info, size_in_bytes)) {
-                dmap_error_handler("Allocation failed 4");
-            }
-            new_hdr = (DmapHdr*)alloc_info->base;
-            new_hdr->alloc_info = alloc_info;
-            break;
-        }
-        case ALLOC_MALLOC:
-        {
-            new_hdr = (DmapHdr*)malloc(size_in_bytes);
-            if(!new_hdr){
-                dmap_error_handler("Out of memory 3");
-            }
-            new_hdr->alloc_info = NULL;
-            break;
-        }
+    if(!alloc){
+        alloc = realloc;
     }
-    new_hdr->alloc_type = alloc_type;
+    new_hdr = alloc(dmap, size_in_bytes);
+    if(!new_hdr){
+        dmap_error_handler("Out of memory 3");
+    }
+    new_hdr->alloc = alloc;
     new_hdr->len = 0;
     new_hdr->cap = (u32)capacity;
     new_hdr->hash_cap = (u32)table_capacity;
     new_hdr->returned_idx = DMAP_EMPTY;
     new_hdr->table = NULL;
     new_hdr->free_list = NULL;
-    new_hdr->key_type = DMAP_UNINITIALIZED;
     new_hdr->key_size = 0;
     new_hdr->hash_seed = dmap_generate_seed();
     new_hdr->key_type = is_string ? DMAP_STR : DMAP_U64;
 
     dmap_grow_table(new_hdr->data, new_hdr->hash_cap, 0);
-    assert(((uintptr_t)&new_hdr->data & (DATA_ALIGNMENT - 1)) == 0); // ensure alignment
+    assert(((uintptr_t)&new_hdr->data & (DMAP_ALIGNMENT - 1)) == 0); // ensure alignment
     return new_hdr->data;
 }
-void *dmap__kstr_init(void *dmap, size_t initial_capacity, size_t elem_size, AllocType alloc_type){
-    return dmap__init_internal(dmap, initial_capacity, elem_size, alloc_type, true);
+void *dmap__kstr_init(void *dmap, size_t initial_capacity, size_t elem_size, AllocatorFn alloc){
+    return dmap__init_internal(dmap, initial_capacity, elem_size, true, alloc);
 }
-void *dmap__init(void *dmap, size_t initial_capacity, size_t elem_size, AllocType alloc_type){
-    return dmap__init_internal(dmap, initial_capacity, elem_size, alloc_type, false);
+void *dmap__init(void *dmap, size_t initial_capacity, size_t elem_size, AllocatorFn alloc){
+    return dmap__init_internal(dmap, initial_capacity, elem_size, false, alloc);
 }
 // grows the hashmap to a new capacity
 void *dmap__kstr_grow(void *dmap, size_t elem_size) {
     if (!dmap) {
         // when this is the case we just want the defaults
-        AllocType alloc_type = ALLOC_MALLOC;
-        return dmap__kstr_init(dmap, 0, elem_size, alloc_type);
+        return dmap__kstr_init(dmap, 0, elem_size, NULL);
     }
     return dmap__grow_internal(dmap, elem_size);
 }
 void *dmap__grow(void *dmap, size_t elem_size) {
     if (!dmap) {
         // when this is the case we just want the defaults
-        AllocType alloc_type = ALLOC_MALLOC;
-        return dmap__init(dmap, 0, elem_size, alloc_type);
+        return dmap__init(dmap, 0, elem_size, NULL);
     }
     return dmap__grow_internal(dmap, elem_size);
 }
@@ -676,22 +320,13 @@ void dmap__free(void *dmap){
         if(d->table) {
             free(d->table); 
         }
-        if(d->free_list) {
-            darr_free(d->free_list);
-        }
-        switch (d->alloc_type) 
-        {
-            case ALLOC_VIRTUAL:{
-                AllocInfo *temp = d->alloc_info;
-                v_alloc_free(d->alloc_info);
-                free(temp);
-                break;
+        if(d->free_list){
+            if(d->free_list->data) {
+                free(d->free_list->data);
             }
-            case ALLOC_MALLOC:{
-                free(dmap__hdr(dmap));
-                break;
-            }
+            free(d->free_list);
         }
+        d->alloc(d, 0); 
     }
 }
 
@@ -701,9 +336,9 @@ static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
         DmapHdr *d = dmap__hdr(dmap); // retrieve the header of the hashmap for internal structure access
         u64 hash = dmap_generate_hash(key, key_size, d->hash_seed); // generate a hash value for the given key
         size_t idx = hash & (d->hash_cap - 1);
-        size_t j = d->hash_cap; // counter to ensure the loop doesn't iterate more than the capacity of the hashmap
+        // size_t j = d->hash_cap; // counter to ensure the loop doesn't iterate more than the capacity of the hashmap
         while(true) { // loop to search for the key in the hashmap
-            assert(j-- != 0); // unreachable -- suggests table is full
+            // assert(j-- != 0); // unreachable -- suggests table is full
             if(d->table[idx].data_idx == DMAP_EMPTY){ // if the entry is empty, the key is not in the hashmap
                 break;
             }
@@ -718,50 +353,49 @@ static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
     }
     return result;
 }
-void dmap__insert_entry(void *dmap, void *key, size_t key_size, bool is_string){ 
+void dmap__insert_entry(void *dmap, void *key, size_t key_size){ 
     DmapHdr *d = dmap__hdr(dmap);
-    if(d->key_type == DMAP_UNINITIALIZED){ // todo: should not go here
-        d->key_type = is_string ? DMAP_STR : DMAP_U64;
-    }
-    if(d->key_size == 0){ 
+    if(d->key_size == 0){  
         if(d->key_type == DMAP_STR) 
             d->key_size = UINT32_MAX; // strings
         else 
             d->key_size = (u32)key_size;
     }
     else if(d->key_size != key_size && d->key_size != UINT32_MAX){
-        char err[256];
-        snprintf(err, 256, "Key is not the correct type/size, it should be %u bytes, but is %zu bytes.\n", d->key_size, key_size);
-        dmap_error_handler(err);
+        dmap_error_handler("Error: key is not the correct size");
     }
     u64 hash = dmap_generate_hash(key, key_size, d->hash_seed);
-    // todo: finish implementing the union idea - starting with the hash we already use.
-    size_t idx = dmap_find_slot(dmap, key, key_size, hash);
-
+    u32 idx = hash & (d->hash_cap - 1);
+    // size_t j = d->hash_cap;
+    while(true){
+        // assert(j-- != 0); // unreachable - suggests there were no empty slots
+        if(d->table[idx].data_idx == DMAP_EMPTY){
+            break;
+        }
+        if(d->table[idx].data_idx != DMAP_DELETED && d->table[idx].hash == hash){
+            if(keys_match(d->table, idx, key, key_size, d->key_type)){
+                break;
+            }
+        }
+        idx = (idx + 1) & (d->hash_cap - 1);
+    }
     if(d->table[idx].data_idx != DMAP_EMPTY && d->table[idx].data_idx != DMAP_DELETED){
         d->returned_idx = d->table[idx].data_idx;
     }
     else {
-        d->returned_idx = darr_len(d->free_list) ? darr_pop(d->free_list) : d->len;
+
+        d->returned_idx = d->free_list && d->free_list->len > 0 ? dmap_freelist_pop(d) : d->len;
         d->len += 1;
 
         DmapTable *entry = &d->table[idx];
         entry->hash = hash;
         entry->data_idx = d->returned_idx;
-        switch (d->key_type) {
-            case DMAP_U64: {
-                entry->key = 0;  // zero-out first
-                memcpy(&entry->key, key, key_size);
-                break;
-            }
-            case DMAP_STR:{
-                entry->rehash = dmap_generate_hash(key, key_size, hash);  // rehash
-                break;
-            }
-            case DMAP_UNINITIALIZED:{
-            default:
-                dmap_error_handler("Invalid KeyType in insert_entry.\n");
-            }
+        if(d->key_type == DMAP_U64){
+            entry->key = 0;  // zero-out first
+            memcpy(&entry->key, key, key_size);
+        }
+        else { // string
+            entry->rehash = dmap_generate_hash(key, key_size, hash);  // rehash
         }
     }
     return;
@@ -773,9 +407,7 @@ bool dmap__find_data_idx(void *dmap, void *key, size_t key_size){
     }
     DmapHdr *d = dmap__hdr(dmap);
     if(d->key_size != key_size && d->key_size != UINT32_MAX){ 
-        char err[128];
-        snprintf(err, 128, "GET: Key is not the correct type, it should be %u bytes, but is %zu bytes.\n", d->key_size, key_size);
-        dmap_error_handler(err);
+        dmap_error_handler("Error: key is not the correct size");
     }
     size_t idx = dmap__get_entry_index(dmap, key, key_size);
     if(idx == DMAP_INVALID) { 
@@ -793,6 +425,7 @@ size_t dmap__get_idx(void *dmap, void *key, size_t key_size){
     }
     return d->table[idx].data_idx;
 }
+
     // returns the data index of the deleted entry. Caller may wish to mark data as invalid
 size_t dmap__delete(void *dmap, void *key, size_t key_size){
     size_t idx = dmap__get_entry_index(dmap, key, key_size);
@@ -801,7 +434,7 @@ size_t dmap__delete(void *dmap, void *key, size_t key_size){
     }
     DmapHdr *d = dmap__hdr(dmap);
     u32 data_index = d->table[idx].data_idx;
-    darr_push(d->free_list, data_index);
+    dmap_freelist_push(d, data_index);
     d->table[idx].data_idx = DMAP_DELETED;
     d->len -= 1; 
     return data_index;
@@ -814,7 +447,7 @@ size_t dmap_kstr_get_idx(void *dmap, void *key, size_t key_size){
 }
 // len of the data array, including invalid table. For iterating
 size_t dmap_range(void *dmap){ 
-    return dmap ? dmap__hdr(dmap)->len + darr_len(dmap__hdr(dmap)->free_list) : 0; 
+    return dmap ? dmap__hdr(dmap)->len + dmap__hdr(dmap)->free_list->len : 0; 
 } 
 
 // MARK: hash function:

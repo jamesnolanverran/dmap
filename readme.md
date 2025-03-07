@@ -33,7 +33,6 @@ printf("result: %d\n", *value); // output: result: 33
 - dynamic memory
 - cross-platform
 - good performance
-- stable pointers
 
 Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS support is untested.)
 
@@ -48,16 +47,7 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 - A custom error handler can be set using `dmap_set_error_handler` to handle allocation failures gracefully.
 
 ## Memory Management
-The dmap and darr libs support two memory management models:
-
-1. **Malloc/Realloc Model**:  
-   - Uses traditional `malloc` and `realloc` for memory allocation.
-   - This is the default for `darr` and `dmap`.
-
-2. **Reserve/Commit Model**:  
-   - Uses `VirtualAlloc` or `mmap` to reserve and commit memory, providing stable pointers and avoiding reallocations.
-
-An optional initialization function allows switching between these models.
+User can specify allocator using an init function.
 
 ## Limitations
 
@@ -65,11 +55,6 @@ An optional initialization function allows switching between these models.
 - Currently Not Thread-Safe
 - Untested on macOS
 - Key sizes are compared at runtime. It is up to users to ensure key types are consistent.
-
-## Also Includes:
-
-- **darr** – A dynamic array implementation with dynamic typing.
-- **v_alloc** – A cross-platform reserve/commit-style arena allocator.
 
 ## Full Example: Dmap Usage
 
@@ -159,103 +144,11 @@ int main() {
 }
 ```
 
---- 
-
-## Example V_Alloc Usage
-
-```c
-#include "dmap.h"
-#include <stdio.h>
-
-int main() {
-    // Initialize virtual memory allocator
-    AllocInfo alloc_info = {0};
-    size_t reserve_size = 1024 * 1024; // 1MB
-    if (!v_alloc_reserve(&alloc_info, reserve_size)) {
-        // handle error
-    }
-
-    // Allocate a string using the bump allocator
-    size_t str_len = 32;
-    char *str = v_alloc_committ(&alloc_info, str_len + 1);
-    if (!str) {
-        // handle error
-    }
-    snprintf(str, str_len + 1, "Hello, V_Alloc!");
-    printf("%s\n", str);
-
-    // Reset allocator (memory can be reused)
-    v_alloc_reset(&alloc_info);
-
-    // Allocate another object
-    int *arr = v_alloc_committ(&alloc_info, 10 * sizeof(int));
-    if (!arr) {
-        // handle error
-    }
-    arr[0] = 33;
-    printf("First value: %d\n", arr[0]);
-
-    // Free virtual memory
-    if (!v_alloc_free(&alloc_info)) {
-        // handle error
-    }
-
-    return 0;
-}
-```
-
----
-
-## Example Darr Usage
-
-```c
-#include "dmap.h"
-#include <stdio.h>
-
-int main() {
-
-    // Declare a dynamic array (can store any type)
-    int *my_array = NULL;
-
-    // OPTIONAL: initialize the array with custom settings: initial capacity 512
-    // darr_init(my_array, 512, ALLOC_MALLOC);
-
-    // Push some elements into the array
-    darr_push(my_array, 10);
-    darr_push(my_array, 20);
-    darr_push(my_array, 30);
-
-    // Print the array contents
-    printf("Array after pushing 10, 20, 30:\n");
-    for (size_t i = 0; i < darr_len(my_array); i++) {
-        printf("my_array[%zu] = %d\n", i, my_array[i]);
-    }
-
-    // Pop the last element
-    int last_element = darr_pop(my_array);
-    printf("Popped element: %d\n", last_element);  
-
-    // Peek at the new last element
-    int new_last_element = darr_peek(my_array);
-    printf("New last element: %d\n", new_last_element);  
-
-    // Clear the array for reuse (reset length to 0)
-    darr_clear(my_array);
-    printf("Array cleared. Length: %zu\n", darr_len(my_array));  
-
-    // Free the array and set the pointer to NULL
-    darr_free(my_array);
-    printf("Array freed.\n");
-
-    return 0;
-}
-```
-
 ## License
 
 [MIT License](LICENSE)
 
 ### Credits & Inspiration  
-*darr* is adapted from Per Vognsen's dynamic array implementation on his *Bitwise* series, which was itself based on Sean Barrett's [`stb_ds`](https://github.com/nothings/stb/blob/master/stb_ds.h) library. The approach inspired me to develop a similar approach for hashmaps with *dmap*.
+*dmap* is inspired by Per Vognsen's dynamic array implementation on his *Bitwise* series, which was itself based on Sean Barrett's [`stb_ds`](https://github.com/nothings/stb/blob/master/stb_ds.h) library. 
 
 [Per Vognsen's Bitwise series on YouTube](https://www.youtube.com/pervognsen).
