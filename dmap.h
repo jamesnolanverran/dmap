@@ -95,10 +95,10 @@ static inline size_t dmap_cap(void *d){ return d ? dmap__hdr(d)->cap : 0; }
 // Parameters:
 // - 'd' is the hashmap from which to retrieve the value, effectively an array of v's.
 // - 'k' key for the value. Keys can be any type 1,2,4,8 bytes; use dmap_kstr_insert for strings and non-builtin types
-// - 'v' value 
-#define dmap_insert(d, k, v) (dmap__fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), sizeof(*(k))), ((d)[dmap__ret_idx(d)] = (v)), dmap__ret_idx(d)) 
+// - 'v' value -> VAR_ARGS to allow for direct struct initialization: dmap_kstr_insert(d, k, key_size, (MyType){2,33});
+#define dmap_insert(d, k, ...) (dmap__fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), sizeof(*(k))), ((d)[dmap__ret_idx(d)] = (__VA_ARGS__)), dmap__ret_idx(d)) 
 // same as above but uses a string as key values
-#define dmap_kstr_insert(d, k, v, key_size) (dmap__kstr_fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), (key_size)), ((d)[dmap__ret_idx(d)] = (v)), dmap__ret_idx(d)) 
+#define dmap_kstr_insert(d, k, key_size, ...) (dmap__kstr_fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), (key_size)), ((d)[dmap__ret_idx(d)] = (__VA_ARGS__)), dmap__ret_idx(d)) 
 
 // Returns: A pointer to the value corresponding to 'k' in 'd', or NULL if the key is not found. 
 #define dmap_get(d,k) (dmap__find_data_idx((d), (k), sizeof(*(k))) ? &(d)[dmap__ret_idx(d)] : NULL)  

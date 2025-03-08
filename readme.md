@@ -29,8 +29,12 @@ printf("result: %d\n", *value); // output: result: 33
 ---
 
 ## ⚡ Performance
-- Dmap is designed for simplicity and ease of use, while still outperforming widely-used hashmaps like `uthash` and `std::unordered_map`.
-- [UDB3](https://github.com/attractivechaos/udb3) benchmarks and internal testing show that **Dmap is up to 30% to 40% faster than uthash**.
+**Dmap is designed for simplicity and ease of use, while still outperforming widely-used hashmaps like `uthash` and `std::unordered_map`.**  
+
+- **Stores values directly in a dynamic array** → No pointer indirection.  
+- **Better cache locality** → Faster lookups and iteration.  
+- **30% to 40% faster than `uthash`** in benchmarks like [UDB3](https://github.com/attractivechaos/udb3).  
+- **Supports index-based lookups** → Treat the hashmap like a sparse array.  
 
 ---
 
@@ -39,6 +43,7 @@ printf("result: %d\n", *value); // output: result: 33
 - **Dynamic memory** – Grows and shrinks as needed.  
 - **Cross-platform** – Works on Linux, macOS, and Windows.  
 - **Good performance** – Competitive with leading hashmap implementations.  
+- **Supports compound literals** – Insert structs inline.
 
 **Supported platforms:** Linux, macOS (untested), and Windows. **64-bit only.**  
 
@@ -58,6 +63,7 @@ printf("result: %d\n", *value); // output: result: 33
 
 ## 📦 Memory Management
 Dmap allows **storing complex structs directly** in the hashmap—no need for `malloc()`, extra allocations, or pointer indirection.  
+- **Compound literals** allow inline struct initialization.
 
 ### Example: Using String Keys with Struct Values
 
@@ -81,10 +87,9 @@ int main() {
     const char *email2 = "bob@example.com";
 
     UserProfile alice = {1, 28, 1050.75};
-    UserProfile bob = {2, 35, 893.42};
-
-    dmap_kstr_insert(user_map, email1, alice, strlen(email1));
-    dmap_kstr_insert(user_map, email2, bob, strlen(email2));
+    dmap_kstr_insert(user_map, email1, strlen(email1), alice);
+    // or use compound literals
+    dmap_kstr_insert(user_map, email2, strlen(email2), (UserProfile){2, 35, 893.42}); 
 
     // Retrieve user profiles
     UserProfile *alice_profile = dmap_kstr_get(user_map, email1, strlen(email1));
@@ -107,6 +112,15 @@ int main() {
 - **No manual memory management** → The struct is stored directly in the hashmap.  
 - **Supports complex data** → Store full user records, configurations, or any struct type.  
 - **Works with string keys** → No extra key mapping needed.  
+
+---
+
+## 🔄 Efficient Storage & Iteration
+Unlike traditional hashmaps that store pointers to data, **Dmap stores values directly in a dynamic array**, allowing **efficient iteration and cache-friendly lookups**.  
+
+- **Direct array-based storage** → Iterate over stored values efficiently.  
+- **Bulk processing** → Ideal for SIMD operations, filtering, or batch updates.  
+- **Index-based access** → Retrieve values by position using `dmap_get_idx()`.  
 
 ---
 
@@ -152,7 +166,7 @@ int main() {
     // Optional: Initialize the key-string hashmap w/ custom allocator
     dmap_kstr_init(my_kstr_dmap, 1024 * 1024, v_alloc_realloc); 
     // Insert a value using a string key
-    dmap_kstr_insert(my_kstr_dmap, str_key, 33, strlen(str_key)); // string keys need length param
+    dmap_kstr_insert(my_kstr_dmap, str_key, strlen(str_key), 33); // string keys need length param
 
     // Retrieve a value using a string key
     value = dmap_kstr_get(my_kstr_dmap, str_key, strlen(str_key));
