@@ -47,7 +47,7 @@ Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS su
 - A custom error handler can be set using `dmap_set_error_handler` to handle allocation failures gracefully.
 
 ## Memory Management
-User can specify allocator using an init function.
+User can specify allocator using the init function.
 
 ## Limitations
 
@@ -68,8 +68,8 @@ int main() {
     // Declare a dynamic hashmap (can store any type)
     int *my_dmap = NULL;
 
-    // Optional: Initialize the hashmap with an initial capacity
-    dmap_init(my_dmap, 1024 * 1024, ALLOC_MALLOC); 
+    // Optional: Initialize the hashmap with a custom allocator
+    dmap_init(my_dmap, 1024 * 1024, v_alloc_realloc); 
     // Insert values into the hashmap using integer keys
     int key_1 = 1;
     int key_2 = 2;
@@ -87,8 +87,8 @@ int main() {
     // Use a C-string as key
     char *str_key = "my_key";
 
-    // Optional: Initialize the key-string hashmap
-    dmap_kstr_init(my_kstr_dmap, 1024 * 1024, ALLOC_MALLOC); 
+    // Optional: Initialize the key-string hashmap w/ custom allocator
+    dmap_kstr_init(my_kstr_dmap, 1024 * 1024, v_alloc_realloc); 
     // Insert a value using a string key
     dmap_kstr_insert(my_kstr_dmap, str_key, 33, strlen(str_key)); // string keys need length param
 
@@ -99,7 +99,7 @@ int main() {
     }
     // ================================
     // Get an index
-    // Retrieve an index to a value using an integer key
+    // Retrieve an index to a value using an integer key - treat it like an array
     size_t idx = dmap_get_idx(my_dmap, &key_1);
     if (idx != DMAP_INVALID) {
         printf("Index based result for key_1: %d\n", my_dmap[idx]);  
@@ -113,7 +113,6 @@ int main() {
     if (deleted_index != DMAP_EMPTY) {
         printf("Deleted key_2, data index: %zu\n", deleted_index);  
         // Mark the deleted entry as invalid for safe iteration
-        // If we intend to iterate over the data array directly, we need to indicate that deleted data is invalid.
         // Here, we use -1 to represent an invalid state.
         my_dmap[deleted_index] = -1;
     }
