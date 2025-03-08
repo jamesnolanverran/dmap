@@ -1,6 +1,8 @@
 # dmap
 
-### **Dmap** is a lightweight, zero-friction dynamic hashmap implementation in C, designed to be user friendly without sacrificing performance.
+### Dmap is a flexible, lightweight, zero-friction dynamic hashmap implementation in C, designed to be user-friendly without sacrificing performance.
+
+---
 
 ## 🚀 Super Easy – Zero Setup Required
 
@@ -8,7 +10,7 @@
 // Declare a dynamic hashmap of any type, `int` in this case.
 int *my_dmap = NULL;
 
-// Insert the value 33. You can use any key type.
+// Insert the value 33. You can use any fixed-size key (1, 2, 4, or 8 bytes) or C-strings.
 int key = 13;
 dmap_insert(my_dmap, &key, 33);
 
@@ -18,43 +20,103 @@ int *value = dmap_get(my_dmap, &key);
 printf("result: %d\n", *value); // output: result: 33
 
 ```
+
 - **No manual setup** → Just declare and use.  
 - **Dynamic value storage** → Supports any value type without explicit casting.  
 - **Flexible key types** → Works with integers, strings, and more.  
 - **Automatic memory management** → Grows dynamically as needed.  
 
-## Performance
-- Dmap is designed for simplicity and ease of use, while still outperforming widely-used hashmaps like uthash and std::unordered_map.
-- [UDB3](https://github.com/attractivechaos/udb3) benchmarks and my own testing show that **dmap is up to 30% to 40% faster than uthash**.
+---
 
-## Features
-
-- dynamic typing
-- dynamic memory
-- cross-platform
-- good performance
-
-Supported platforms: **Linux, macOS, and Windows**. 64-bit only. (Note: macOS support is untested.)
+## ⚡ Performance
+- Dmap is designed for simplicity and ease of use, while still outperforming widely-used hashmaps like `uthash` and `std::unordered_map`.
+- [UDB3](https://github.com/attractivechaos/udb3) benchmarks and internal testing show that **Dmap is up to 30% to 40% faster than uthash**.
 
 ---
 
-## Hash Collisions
-- The library stores **raw key bytes** for 1, 2, 4 and 8 bytes keys. If a hash collision occurs, keys are compared directly.  
-- For string and custom struct keys, **two 64-bit hashes** are stored instead of the key. While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible. Future versions will make improvements here.
+## 🔧 Features
+- **Dynamic typing** – Supports multiple key and value types.  
+- **Dynamic memory** – Grows and shrinks as needed.  
+- **Cross-platform** – Works on Linux, macOS, and Windows.  
+- **Good performance** – Competitive with leading hashmap implementations.  
 
-## Error Handling
-- By default, memory allocation failures trigger an error and exit().
-- A custom error handler can be set using `dmap_set_error_handler` to handle allocation failures gracefully.
+**Supported platforms:** Linux, macOS (untested), and Windows. **64-bit only.**  
 
-## Memory Management
-User can specify allocator using the init function.
+---
 
-## Limitations
+## 🔍 Hash Collisions
+- The library stores **raw key bytes** for 1, 2, 4, and 8-byte keys. If a hash collision occurs, keys are compared directly.  
+- For **string and custom struct keys**, **two 64-bit hashes** are stored instead of the key. While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible. Future versions will improve handling.
 
-- Currently 64-bit Only
-- Currently Not Thread-Safe
-- Untested on macOS
-- Key sizes are compared at runtime. It is up to users to ensure key types are consistent.
+---
+
+## ⚠️ Error Handling
+- By default, memory allocation failures trigger an error and `exit()`.  
+- A custom error handler can be set using `dmap_set_error_handler` to handle allocation failures gracefully.  
+
+---
+
+## 📦 Memory Management
+Dmap allows **storing complex structs directly** in the hashmap—no need for `malloc()`, extra allocations, or pointer indirection.  
+
+### Example: Using String Keys with Struct Values
+
+```c
+#include <stdio.h>
+#include <string.h>
+#include "dmap.h"  // Your dmap header
+
+// Define a struct to store directly in the hashmap
+typedef struct {
+    int id;
+    int age;
+    float balance;
+} UserProfile;
+
+int main() {
+    UserProfile *user_map = NULL;  // Declare a dynamic hashmap
+
+    // Insert user profiles with email addresses as keys
+    const char *email1 = "alice@example.com";
+    const char *email2 = "bob@example.com";
+
+    UserProfile alice = {1, 28, 1050.75};
+    UserProfile bob = {2, 35, 893.42};
+
+    dmap_kstr_insert(user_map, email1, alice, strlen(email1));
+    dmap_kstr_insert(user_map, email2, bob, strlen(email2));
+
+    // Retrieve user profiles
+    UserProfile *alice_profile = dmap_kstr_get(user_map, email1, strlen(email1));
+    UserProfile *bob_profile = dmap_kstr_get(user_map, email2, strlen(email2));
+
+    if (alice_profile)
+        printf("Alice: ID=%d, Age=%d, Balance=%.2f\n",
+               alice_profile->id, alice_profile->age, alice_profile->balance);
+
+    if (bob_profile)
+        printf("Bob: ID=%d, Age=%d, Balance=%.2f\n",
+               bob_profile->id, bob_profile->age, bob_profile->balance);
+
+    return 0;
+}
+
+```
+
+### Why This Works
+- **No manual memory management** → The struct is stored directly in the hashmap.  
+- **Supports complex data** → Store full user records, configurations, or any struct type.  
+- **Works with string keys** → No extra key mapping needed.  
+
+---
+
+## ⚠️ Limitations
+- **64-bit only**  
+- **Not thread-safe**  
+- **Untested on macOS**  
+- **Key sizes are compared at runtime** – Users must ensure key types are consistent.  
+
+---
 
 ## Full Example: Dmap Usage
 
