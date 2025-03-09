@@ -34,7 +34,7 @@ printf("result: %d\n", *value); // output: result: 33
 - **Stores values directly in a dynamic array** → No pointer indirection.  
 - **Better cache locality** → Faster lookups and iteration.  
 - **30% to 40% faster than `uthash`** in benchmarks like [UDB3](https://github.com/attractivechaos/udb3).  
-- **Supports index-based lookups** → Treat the hashmap like a sparse array.  
+- **Supports index-based lookups** → Treat the hashmap like an array.  
 
 ---
 
