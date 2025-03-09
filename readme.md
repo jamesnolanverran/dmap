@@ -146,6 +146,8 @@ int main() {
 
     // Optional: Initialize the hashmap with a custom allocator
     dmap_init(my_dmap, 1024 * 1024, v_alloc_realloc); 
+    // we use a virtual memory based allocator for stable pointers, see my v_alloc repo
+
     // Insert values into the hashmap using integer keys
     int key_1 = 1;
     int key_2 = 2;
