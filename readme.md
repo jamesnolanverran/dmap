@@ -144,9 +144,8 @@ int main() {
     // Declare a dynamic hashmap (can store any type)
     int *my_dmap = NULL;
 
-    // Optional: Initialize the hashmap with a custom allocator
-    // dmap_init(my_dmap, 1024 * 1024, v_alloc_realloc); 
-    // we use a virtual memory based allocator for stable pointers, see my v_alloc repo
+    // Optional: Initialize with a custom allocator (requires contiguous memory)
+    // dmap_init(my_dmap, 1024 * 1024, custom_realloc);
 
     // Insert values into the hashmap using integer keys
     int key_1 = 1;
@@ -166,7 +165,7 @@ int main() {
     char *str_key = "my_key";
 
     // Optional: Initialize the key-string hashmap w/ custom allocator
-    dmap_kstr_init(my_kstr_dmap, 1024 * 1024, v_alloc_realloc); 
+    // dmap_kstr_init(my_kstr_dmap, 1024 * 1024, v_alloc_realloc); 
     // Insert a value using a string key
     dmap_kstr_insert(my_kstr_dmap, str_key, strlen(str_key), 33); // string keys need length param
 
