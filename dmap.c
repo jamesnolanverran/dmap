@@ -12,14 +12,14 @@
         #define DEBUGBREAK() __builtin_trap()
     #endif
 
-    #ifndef assert
-        #define assert(expr)                                   \
+    #ifndef dmap_assert
+        #define dmap_assert(expr)                                   \
             do {                                               \
                 if (!(expr)) {                                 \
                     common_assert_failed(__FILE__, __LINE__);  \
                 }                                              \
             } while (0)
-    #endif // assert
+    #endif // dmap_assert
 
     #ifndef common_assert_failed
         #define common_assert_failed(f, l)                     \
@@ -29,8 +29,7 @@
             } while (0)
     #endif // common_assert_failed
 #else
-    // #include <assert.h>
-    #define assert
+    #define dmap_assert
 #endif
 
 #if defined(_MSC_VER) || defined(_WIN32)
@@ -214,7 +213,7 @@ static void dmap_grow_table(void *dmap, size_t new_hash_cap, size_t old_hash_cap
             size_t idx = d->table[i].hash & (new_hash_cap - 1);
             // size_t j = new_hash_cap;
             while(true){
-                // assert(j-- != 0); // unreachable, suggests no empty slot was found
+                // dmap_assert(j-- != 0); // unreachable, suggests no empty slot was found
                 if(new_table[idx].data_idx == DMAP_EMPTY){
                     new_table[idx] = d->table[i];
                     break;
@@ -255,7 +254,7 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     new_hdr->cap = (u32)new_cap;
     new_hdr->hash_cap = (u32)new_hash_cap;
 
-    assert(((uintptr_t)&new_hdr->data & (DMAP_ALIGNMENT - 1)) == 0); // ensure alignment
+    dmap_assert(((uintptr_t)&new_hdr->data & (DMAP_ALIGNMENT - 1)) == 0); // ensure alignment
     return new_hdr->data; // return the aligned data pointer
 }
 
@@ -300,7 +299,7 @@ static void *dmap__init_internal(void *dmap, size_t capacity, size_t elem_size, 
     new_hdr->key_type = is_string ? DMAP_STR : DMAP_U64;
 
     dmap_grow_table(new_hdr->data, new_hdr->hash_cap, 0);
-    assert(((uintptr_t)&new_hdr->data & (DMAP_ALIGNMENT - 1)) == 0); // ensure alignment
+    dmap_assert(((uintptr_t)&new_hdr->data & (DMAP_ALIGNMENT - 1)) == 0); // ensure alignment
     return new_hdr->data;
 }
 void *dmap__kstr_init(void *dmap, size_t initial_capacity, size_t elem_size, AllocatorFn alloc){
@@ -348,7 +347,7 @@ static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
         size_t idx = hash & (d->hash_cap - 1);
         // size_t j = d->hash_cap; // counter to ensure the loop doesn't iterate more than the capacity of the hashmap
         while(true) { // loop to search for the key in the hashmap
-            // assert(j-- != 0); // unreachable -- suggests table is full
+            // dmap_assert(j-- != 0); // unreachable -- suggests table is full
             if(d->table[idx].data_idx == DMAP_EMPTY){ // if the entry is empty, the key is not in the hashmap
                 break;
             }
@@ -378,7 +377,7 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size){
     u32 idx = hash & (d->hash_cap - 1);
     // size_t j = d->hash_cap;
     while(true){
-        // assert(j-- != 0); // unreachable - suggests there were no empty slots
+        // dmap_assert(j-- != 0); // unreachable - suggests there were no empty slots
         if(d->table[idx].data_idx == DMAP_EMPTY){
             break;
         }
