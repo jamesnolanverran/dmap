@@ -145,7 +145,7 @@ int main() {
     int *my_dmap = NULL;
 
     // Optional: Initialize with a custom allocator (requires contiguous memory)
-    // dmap_init(my_dmap, 1024 * 1024, custom_realloc);
+    // dmap_init(my_dmap, 1024 * 1024, v_alloc_realloc);
 
     // Insert values into the hashmap using integer keys
     int key_1 = 1;
@@ -166,6 +166,7 @@ int main() {
 
     // Optional: Initialize the key-string hashmap w/ custom allocator
     // dmap_kstr_init(my_kstr_dmap, 1024 * 1024, v_alloc_realloc); 
+
     // Insert a value using a string key
     dmap_kstr_insert(my_kstr_dmap, str_key, strlen(str_key), 33); // string keys need length param
 
