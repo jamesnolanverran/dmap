@@ -40,7 +40,7 @@ printf("result: %d\n", *value); // output: result: 33
 
 ## 🔧 Features
 - **Generic typing** – Supports multiple key and value types.  
-- **Dynamic memory** – Grows and shrinks as needed.  
+- **Dynamic memory** – Grows as needed.  
 - **Cross-platform** – Works on Linux, macOS, and Windows.  
 - **Good performance** – Competitive with leading hashmap implementations.  
 - **Supports compound literals** – Insert structs inline.
