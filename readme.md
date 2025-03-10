@@ -22,7 +22,7 @@ printf("result: %d\n", *value); // output: result: 33
 ```
 
 - **No manual setup** → Just declare and use.  
-- **Dynamic value storage** → Supports any value type without explicit casting.  
+- **Generic value storage** → Supports any value type without explicit casting.  
 - **Flexible key types** → Works with integers, strings, and more.  
 - **Automatic memory management** → Grows dynamically as needed.  
 
@@ -39,7 +39,7 @@ printf("result: %d\n", *value); // output: result: 33
 ---
 
 ## 🔧 Features
-- **Dynamic typing** – Supports multiple key and value types.  
+- **Generic typing** – Supports multiple key and value types.  
 - **Dynamic memory** – Grows and shrinks as needed.  
 - **Cross-platform** – Works on Linux, macOS, and Windows.  
 - **Good performance** – Competitive with leading hashmap implementations.  
