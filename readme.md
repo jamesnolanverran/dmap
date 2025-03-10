@@ -188,7 +188,7 @@ int main() {
 
     // Delete a key from the hashmap
     size_t deleted_index = dmap_delete(my_dmap, &key_2);
-    if (deleted_index != DMAP_EMPTY) {
+    if (deleted_index != DMAP_INVALID) {
         printf("Deleted key_2, data index: %zu\n", deleted_index);  
         // Mark the deleted entry as invalid for safe iteration
         // Here, we use -1 to represent an invalid state.
