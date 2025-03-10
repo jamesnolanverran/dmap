@@ -2,6 +2,7 @@
 #include <stdlib.h> 
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 
 #ifdef DMAP_DEBUG
 #include <stdio.h>
@@ -37,7 +38,7 @@
 #endif
 
 static inline size_t next_power_of_2(size_t x) {
-    if (x <= 1) return 1;  // Ensure minimum value of 1
+    if (x <= 1) return 1;  // ensure minimum value of 1
 
     #if defined(_MSC_VER) || defined(_WIN32)
         unsigned long index;
