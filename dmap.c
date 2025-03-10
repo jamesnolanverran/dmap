@@ -100,6 +100,16 @@ typedef int16_t     s16;
 typedef int32_t     s32;
 typedef int64_t     s64;
 typedef uint8_t     u8; 
+#ifndef MAX
+#define MAX(x, y) ((x) >= (y) ? (x) : (y))
+#endif
+
+#define ALIGN_DOWN(n, a) ((n) & ~((a) - 1))
+#define ALIGN_UP(n, a) ALIGN_DOWN((n) + (a) - 1, (a))
+
+#define ALIGN_DOWN_PTR(p, a) ((void *)ALIGN_DOWN((uintptr_t)(p), (a)))
+#define ALIGN_UP_PTR(p, a) ((void *)ALIGN_UP((uintptr_t)(p), (a)))
+
 typedef uint16_t    u16;
 typedef uint32_t    u32;
 typedef uint64_t    u64;
