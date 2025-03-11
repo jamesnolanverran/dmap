@@ -21,10 +21,15 @@ printf("result: %d\n", *value); // output: result: 33
 
 ```
 
-- **No manual setup** → Just declare and use.  
-- **Generic value storage** → Supports any value type without explicit casting.  
-- **Flexible key types** → Works with integers, strings, and more.  
-- **Automatic memory management** → Grows dynamically as needed.  
+## 🔧 Features
+- **Zero setup required**
+- **Generic typing** – Supports multiple key and value types.  
+- **Dynamic memory** – Grows as needed.  
+- **Cross-platform** – Works on Linux, macOS, and Windows.  
+- **Good performance** – Competitive with leading hashmap implementations.  
+- **Supports compound literals** – Insert structs inline.
+
+**Supported platforms:** Linux, macOS (untested), and Windows. **64-bit only.**  
 
 ---
 
@@ -35,17 +40,6 @@ printf("result: %d\n", *value); // output: result: 33
 - **Better cache locality** → Faster lookups and iteration.  
 - **30% to 40% faster than `uthash`** in benchmarks like [UDB3](https://github.com/attractivechaos/udb3).  
 - **Supports index-based lookups** → Treat the hashmap like an array.  
-
----
-
-## 🔧 Features
-- **Generic typing** – Supports multiple key and value types.  
-- **Dynamic memory** – Grows as needed.  
-- **Cross-platform** – Works on Linux, macOS, and Windows.  
-- **Good performance** – Competitive with leading hashmap implementations.  
-- **Supports compound literals** – Insert structs inline.
-
-**Supported platforms:** Linux, macOS (untested), and Windows. **64-bit only.**  
 
 ---
 
@@ -62,7 +56,7 @@ printf("result: %d\n", *value); // output: result: 33
 ---
 
 ## 📦 Memory Management
-Dmap allows **storing complex structs directly** in the hashmap—no need for `malloc()`, extra allocations, or pointer indirection.  
+- Dmap allows **storing complex structs directly** in the hashmap
 - **Compound literals** allow inline struct initialization.
 
 ### Example: Using String Keys with Struct Values
@@ -109,7 +103,7 @@ int main() {
 ```
 
 ### Why This Works
-- **No manual memory management** → The struct is stored directly in the hashmap.  
+- The struct is stored directly in the hashmap by value.
 - **Supports complex data** → Store full user records, configurations, or any struct type.  
 - **Works with string keys** → No extra key mapping needed.  
 
