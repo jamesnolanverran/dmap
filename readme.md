@@ -103,7 +103,7 @@ int main() {
 ```
 
 ### Why This Works
-- The struct is stored directly in the hashmap by value.
+- **Direct storage** → The struct is stored directly in the hashmap by value.
 - **Supports complex data** → Store full user records, configurations, or any struct type.  
 - **Works with string keys** → No extra key mapping needed.  
 
