@@ -22,7 +22,7 @@ printf("result: %d\n", *value); // output: result: 33
 ```
 
 ## 🔧 Features
-- **No boilerplate** - Zero setup required.
+- **No boilerplate** – Zero setup required.
 - **Generic typing** – Supports multiple key and value types.  
 - **Dynamic memory** – Grows as needed.  
 - **Cross-platform** – Works on Linux, macOS, and Windows.  
