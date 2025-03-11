@@ -125,10 +125,11 @@ Unlike traditional hashmaps that store pointers to data, **Dmap stores values di
 ---
 
 ## ⚠️ Limitations
+- **Not thread-safe** for reading or writing - every read involves a write which can cause race conditions.
 - **64-bit only**  
-- **Not thread-safe**  
-- **Untested on macOS**  
+- **Macro arguments (`d`, `k`) may be evaluated multiple times** – Avoid expressions with side effects.
 - **Key sizes are compared at runtime** – Users must ensure key types are consistent.  
+- **Untested on macOS**  
 
 ---
 
