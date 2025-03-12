@@ -45,7 +45,7 @@ printf("result: %d\n", *value); // output: result: 33
 
 ## 🔍 Hash Collisions
 - The library stores **raw key bytes** for 1, 2, 4, and 8-byte keys. If a hash collision occurs, keys are compared directly.  
-- For **string and custom struct keys**, **two 64-bit hashes** are stored instead of the key. While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible. Future versions will improve handling.
+- For string keys, two 64-bit hashes are stored instead of the key. A random seed is used in the hashing process to reduce the likelihood of predictable collisions. While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible. Future versions will improve handling.
 
 ---
 
@@ -120,12 +120,21 @@ Unlike traditional hashmaps that store pointers to data, **Dmap stores values di
 
 ## ⚠️ Limitations
 - **Not thread-safe** for reading or writing - every read involves a write which can cause race conditions.
+- **String keys** are not fully collision resistant, see 'Hash Collisions' section above
 - **64-bit only**  
+- **Struct keys** are not yet supported.
 - **Macro arguments (`d`, `k`) may be evaluated multiple times** – Avoid expressions with side effects.
 - **Key sizes are compared at runtime** – Users must ensure key types are consistent.  
 - **Untested on macOS**  
 
 ---
+
+## TODO:
+
+- allow thread-safe reads
+- improve hash collision handling
+- add tests
+- allow use struct keys, via custom hash and comparison functions
 
 ## Full Example: Dmap Usage
 
