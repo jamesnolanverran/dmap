@@ -1,4 +1,5 @@
 #include "dmap.h"
+#include <stdbool.h>
 #include <stdlib.h> 
 #include <stdint.h>
 #include <string.h>
@@ -148,7 +149,20 @@ struct DmapTable {
 
 
 // declare hash functions
-static inline u64 rapidhash_internal(const void *key, size_t len, u64 seed, const u64 *secret);
+#ifdef __cplusplus
+  #define RAPIDHASH_NOEXCEPT noexcept
+  #define RAPIDHASH_CONSTEXPR constexpr
+  #ifndef RAPIDHASH_INLINE
+    #define RAPIDHASH_INLINE inline
+  #endif
+#else
+  #define RAPIDHASH_NOEXCEPT
+  #define RAPIDHASH_CONSTEXPR static const
+  #ifndef RAPIDHASH_INLINE
+    #define RAPIDHASH_INLINE static inline
+  #endif
+#endif
+static inline u64 rapidhash_internal(const void *key, size_t len, u64 seed, const u64 *secret) RAPIDHASH_NOEXCEPT;
 
 static const u64 RAPIDHASH_SECRET[3] = {
     0x9E3779B97F4A7C15ULL,  
@@ -162,7 +176,7 @@ static u64 dmap_generate_hash(void *key, size_t key_size, u64 seed) {
 
 void dmap_freelist_push(DmapHdr *dh, u32 index) {
     if(!dh->free_list){
-        dh->free_list = malloc(sizeof(DmapFreeList));
+        dh->free_list = (DmapFreeList*)malloc(sizeof(DmapFreeList));
         if(!dh->free_list){
             dmap_error_handler("malloc failed at freelist");
         }
@@ -201,7 +215,7 @@ static bool keys_match(DmapTable *table, size_t idx, void *key, size_t key_size,
 static void dmap_grow_table(void *dmap, size_t new_hash_cap, size_t old_hash_cap) {
     DmapHdr *d = dmap__hdr(dmap); // retrieve the hashmap header
     size_t new_size_in_bytes = new_hash_cap * sizeof(DmapTable);
-    DmapTable *new_table = malloc(new_size_in_bytes);
+    DmapTable *new_table = (DmapTable*)malloc(new_size_in_bytes);
     if (!new_table) {
         dmap_error_handler("Out of memory 1");
     }
@@ -244,7 +258,7 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
         dmap_error_handler("Error: Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overide default.");
     }
 
-    new_hdr = dh->alloc(dh, total_size_in_bytes);
+    new_hdr = (DmapHdr*)dh->alloc(dh, total_size_in_bytes);
 
     if(!new_hdr) {
         dmap_error_handler("Out of memory 2");
@@ -284,7 +298,7 @@ static void *dmap__init_internal(void *dmap, size_t capacity, size_t elem_size, 
     if(!alloc){
         alloc = realloc;
     }
-    new_hdr = alloc(dmap, size_in_bytes);
+    new_hdr = (DmapHdr*)alloc(dmap, size_in_bytes);
     if(!new_hdr){
         dmap_error_handler("Out of memory 3");
     }
@@ -296,6 +310,7 @@ static void *dmap__init_internal(void *dmap, size_t capacity, size_t elem_size, 
     new_hdr->table = NULL;
     new_hdr->free_list = NULL;
     new_hdr->key_size = 0;
+    new_hdr->val_size = (u32)elem_size;
     new_hdr->hash_seed = dmap_generate_seed();
     new_hdr->key_type = is_string ? DMAP_STR : DMAP_U64;
 
@@ -410,10 +425,10 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size){
     }
     return;
 }
-// returns: size_t - The index of the entry if the key is found, or DMAP_INVALID if the key is not present
-bool dmap__find_data_idx(void *dmap, void *key, size_t key_size){
+
+void* dmap__find_data_idx(void *dmap, void *key, size_t key_size){
     if(!dmap){
-        return false;
+        return NULL;
     }
     DmapHdr *d = dmap__hdr(dmap);
     if(d->key_size != key_size && d->key_size != UINT32_MAX){ 
@@ -421,10 +436,9 @@ bool dmap__find_data_idx(void *dmap, void *key, size_t key_size){
     }
     size_t idx = dmap__get_entry_index(dmap, key, key_size);
     if(idx == DMAP_INVALID) { 
-        return false; // entry is not found
+        return NULL; // entry is not found
     }
-    d->returned_idx = d->table[idx].data_idx;
-    return true;
+    return (char*)dmap + d->table[idx].data_idx * d->val_size;
 }
 // returns: size_t - The index of the data associated with the key, or DMAP_INVALID (UINT32_MAX) if the key is not found
 size_t dmap__get_idx(void *dmap, void *key, size_t key_size){
@@ -515,19 +529,6 @@ size_t dmap_range(void *dmap){
  *
  *  RAPIDHASH_INLINE can be overridden to be stronger than a hint, i.e. by adding __attribute__((always_inline)).
  */
-#ifdef __cplusplus
-  #define RAPIDHASH_NOEXCEPT noexcept
-  #define RAPIDHASH_CONSTEXPR constexpr
-  #ifndef RAPIDHASH_INLINE
-    #define RAPIDHASH_INLINE inline
-  #endif
-#else
-  #define RAPIDHASH_NOEXCEPT
-  #define RAPIDHASH_CONSTEXPR static const
-  #ifndef RAPIDHASH_INLINE
-    #define RAPIDHASH_INLINE static inline
-  #endif
-#endif
 
 /*
  *  Protection macro, alters behaviour of rapid_mum multiplication function.
@@ -786,3 +787,4 @@ RAPIDHASH_INLINE uint64_t rapidhash_withSeed(const void *key, size_t len, uint64
 RAPIDHASH_INLINE uint64_t rapidhash(const void *key, size_t len) RAPIDHASH_NOEXCEPT {
   return rapidhash_withSeed(key, len, RAPID_SEED);
 }
+

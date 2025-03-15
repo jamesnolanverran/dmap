@@ -118,23 +118,24 @@ Unlike traditional hashmaps that store pointers to data, **Dmap stores values di
 
 ---
 
-## ⚠️ Limitations
-- **Not thread-safe** for reading or writing - every read involves a write which can cause race conditions.
-- **String keys** are not fully collision resistant, see 'Hash Collisions' section above
-- **64-bit only**  
-- **Struct keys** are not yet supported.
-- **Macro arguments (`d`, `k`) may be evaluated multiple times** – Avoid expressions with side effects.
-- **Key sizes are compared at runtime** – Users must ensure key types are consistent.  
-- **Untested on macOS**  
+## ⚠️ Limitations  
+- **String keys** are not fully collision-resistant; refer to the 'Hash Collisions' section above for details.  
+- **64-bit systems only** – No support for 32-bit architectures.  
+- **Struct keys** are currently unsupported.  
+- **Macro arguments (d, k) may be evaluated multiple times** – Avoid using expressions with side effects.  
+- **Key sizes are compared at runtime** – Users must ensure consistency in key types.  
+- **Untested on macOS** – Compatibility is not guaranteed.  
+- **C++ support** is a work in progress.
+- **dmap_get** uses `typeof()` (or `decltype()` in C++) for type safety, but falls back to a `void*` return in environments where `typeof()` is unavailable.  
+- **Pointer Validity**: The pointer returned by `dmap_get` is only valid as long as the dmap is not modified. Insertions or reallocations may invalidate the pointer. Use `dmap_get_idx` if this is an issue.
 
 ---
 
 ## TODO:
-
-- allow thread-safe reads
 - improve hash collision handling
 - add tests
-- allow use struct keys, via custom hash and comparison functions
+- allow use of struct keys, via custom hash and comparison functions
+- improve documentation
 
 ## Full Example: Dmap Usage
 
