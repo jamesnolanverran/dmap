@@ -161,7 +161,7 @@ static const u64 RAPIDHASH_SECRET[3] = {
     0xCA9B0C7EBA1DA115ULL   
 };
 
-u64 dmap_generate_hash(void *key, size_t key_size, u64 seed) {
+unsigned long long dmap_generate_hash(void *key, size_t key_size, unsigned long long seed) {
     return rapidhash_internal(key, key_size, seed, RAPIDHASH_SECRET);
 }
 
