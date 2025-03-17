@@ -10,14 +10,14 @@
 // Declare a dynamic hashmap of any type, `int` in this case.
 int *my_dmap = NULL;
 
-// Insert the value 33. You can use any fixed-size key (1, 2, 4, or 8 bytes) or C-strings.
+// Insert the value 33. You can use any basic data types (ints,floats, etc) or C-strings.
 int key = 13;
 dmap_insert(my_dmap, &key, 33);
 
 // Retrieve the value.
-int *value = dmap_get(my_dmap, &key);
+size_t idx = dmap_get_idx(my_dmap, &key);
 
-printf("result: %d\n", *value); // output: result: 33
+printf("result: %d\n", my_dmap[idx]); // output: result: 33
 
 ```
 
@@ -170,7 +170,7 @@ int main() {
     // Insert a value using a string key
     dmap_kstr_insert(my_kstr_dmap, str_key, strlen(str_key), 33); // string keys need length param
 
-    // Retrieve a value using a string key
+    // Retrieve a *value using a string key
     value = dmap_kstr_get(my_kstr_dmap, str_key, strlen(str_key));
     if (value) {
         printf("Value for key 'str_key': %d\n", *value);  
