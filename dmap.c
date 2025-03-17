@@ -412,10 +412,10 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size){
     // size_t j = d->hash_cap;
     while(true){
         // dmap_assert(j-- != 0); // unreachable - suggests there were no empty slots
-        if(d->table[idx].data_idx == DMAP_EMPTY){
+        if(d->table[idx].data_idx == DMAP_EMPTY || d->table[idx].data_idx == DMAP_DELETED){ // insert in empty or deleted
             break;
         }
-        if(d->table[idx].data_idx != DMAP_DELETED && d->table[idx].hash == hash){
+        if(d->table[idx].hash == hash){ 
             if(keys_match(d->table, idx, key, key_size, d->key_type)){ // modify existing entry
                 break;
             }
