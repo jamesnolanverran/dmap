@@ -44,8 +44,11 @@ printf("result: %d\n", *value); // output: result: 33
 ---
 
 ## 🔍 Hash Collisions
-- The library stores **raw key bytes** for 1, 2, 4, and 8-byte keys. If a hash collision occurs, keys are compared directly.  
-- For string keys, two 64-bit hashes are stored instead of the key. A random seed is used in the hashing process to reduce the likelihood of predictable collisions. While hash collisions are extremely rare (less than 1 in 10¹⁸ for a trillion keys), they are still possible. Future versions will improve handling.
+- Keys are compared directly.
+- The library stores **raw key bytes** for 1, 2, 4, and 8-byte keys, and assumes they are basic data types like integers and floating-point numbers that can be compared using `memcmp()`.
+- String keys are copied, allocated with `malloc()`, and freed on `dmap_delete` or `dmap_free`.
+- Future versions will support user-managed string lifetimes and user-supplied destructors.
+- Struct keys are not currently supported. See the TODO list.
 
 ---
 
@@ -56,7 +59,7 @@ printf("result: %d\n", *value); // output: result: 33
 ---
 
 ## 📦 Memory Management
-- Dmap allows **storing complex structs directly** in the hashmap
+- Dmap allows **storing complex structs values directly** in the hashmap
 - **Compound literals** allow inline struct initialization.
 
 ### Example: Using String Keys with Struct Values
@@ -99,18 +102,10 @@ int main() {
 
     return 0;
 }
-
 ```
 
-### Why This Works
-- **Direct storage** → The struct is stored directly in the hashmap by value.
-- **Supports complex data** → Store full user records, configurations, or any struct type.  
-- **Works with string keys** → No extra key mapping needed.  
-
----
-
 ## 🔄 Efficient Storage & Iteration
-Unlike traditional hashmaps that store pointers to data, **Dmap stores values directly in a dynamic array**, allowing **efficient iteration and cache-friendly lookups**.  
+Unlike traditional hashmaps that store pointers to data, **Dmap stores values directly in a dynamic array**, allowing **efficient iteration**.  
 
 - **Direct array-based storage** → Iterate over stored values efficiently.  
 - **Bulk processing** → Ideal for SIMD operations, filtering, or batch updates.  
@@ -119,23 +114,23 @@ Unlike traditional hashmaps that store pointers to data, **Dmap stores values di
 ---
 
 ## ⚠️ Limitations  
-- **String keys** are not fully collision-resistant; refer to the 'Hash Collisions' section above for details.  
-- **64-bit systems only** – No support for 32-bit architectures.  
-- **Struct keys** are currently unsupported.  
+- **64-bit systems only**
+- **Struct keys** are not currently supported because `memcmp()` does not account for struct padding. Future versions will allow custom hash and comparison functions for struct keys. See the TODO list.
 - **Macro arguments (d, k) may be evaluated multiple times** – Avoid using expressions with side effects.  
-- **Key sizes are compared at runtime** – Users must ensure consistency in key types.  
+- **Key sizes are compared at runtime** – However, users must ensure consistency in key types.  
 - **Untested on macOS** – Compatibility is not guaranteed.  
 - **C++ support** is a work in progress.
 - **dmap_get** uses `typeof()` (or `decltype()` in C++) for type safety, but falls back to a `void*` return in environments where `typeof()` is unavailable.  
-- **Pointer Validity**: The pointer returned by `dmap_get` is only valid as long as the dmap is not modified. Insertions or reallocations may invalidate the pointer. Use `dmap_get_idx` if this is an issue.
+- **Pointer Validity**: The pointer returned by `dmap_get` is only valid as long as the dmap is not modified. Insertions or reallocations may invalidate the pointer. Use an index via `dmap_get_idx` if this is an issue.
 
 ---
 
 ## TODO:
-- improve hash collision handling
-- add tests
-- allow use of struct keys, via custom hash and comparison functions
-- improve documentation
+- Add a full test suite (unit + stress tests)
+- Support struct keys with user-defined hash & comparison functions
+- Allow user-managed string and struct keys (opt-out of copying)
+- Add support for user-defined key destructors for string and struct keys
+- Expand documentation 
 
 ## Full Example: Dmap Usage
 

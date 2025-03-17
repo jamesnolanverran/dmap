@@ -75,6 +75,8 @@ static inline DmapHdr *dmap__hdr(void *d){
 static inline size_t dmap_count(void *d){ return d ? dmap__hdr(d)->len : 0; } // how many valid entries in the dicctionary; not for iterating directly over the data 
 static inline size_t dmap_cap(void *d){ return d ? dmap__hdr(d)->cap : 0; }
 
+unsigned long long dmap_generate_hash(void *key, size_t key_size, unsigned long long seed);
+
 // Helper Macros - Utilized by other macros.
 
 // allows macros to pass a value
@@ -109,7 +111,7 @@ static inline size_t dmap_cap(void *d){ return d ? dmap__hdr(d)->cap : 0; }
 #define dmap_kstr_insert(d, k, key_size, ...) (dmap__kstr_fit((d), dmap_count(d) + 1), dmap__insert_entry((d), (k), (key_size)), ((d)[dmap__ret_idx(d)] = (__VA_ARGS__)), dmap__ret_idx(d)) 
 
 // Returns: A pointer to the value corresponding to 'k' in 'd', or NULL if the key is not found. 
-#if defined(__cplusplus) // haven't tested
+#if defined(__cplusplus) // haven't fully tested c++ compatibility
     #define dmap_get(d, k) ((decltype(d)) dmap__find_data_idx((d), (k), sizeof(*(k))))
 #elif defined(__clang__) || defined(__GNUC__)  
     #define dmap_get(d, k) ((typeof(d)) dmap__find_data_idx((d), (k), sizeof(*(k))))
@@ -117,7 +119,7 @@ static inline size_t dmap_cap(void *d){ return d ? dmap__hdr(d)->cap : 0; }
     #define dmap_get(d, k) (dmap__find_data_idx((d), (k), sizeof(*(k))))
 #endif
 // Returns: A pointer to the value corresponding to 'k' in 'd', or NULL if the key is not found.
-#if defined(__cplusplus)// haven't tested
+#if defined(__cplusplus)
     #define dmap_kstr_get(d, k, key_size) ((decltype(d)) dmap__find_data_idx((d), (k), (key_size)))
 #elif defined(__clang__) || defined(__GNUC__)  
     #define dmap_kstr_get(d, k, key_size) ((typeof(d)) dmap__find_data_idx((d), (k), (key_size)))
