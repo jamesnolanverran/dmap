@@ -61,7 +61,7 @@ it prioritizes **simplicity and flexibility over memory efficiency**.
 - Hash collisions are handled by checking hashes first, then comparing keys directly.
 - By default, keys are copied. Keys larger than 8 bytes are heap-allocated and freed on deletion.
 - Users can opt to manage keys manually. In this case, dmap stores a pointer and optionally calls a user-supplied free_key function (set via `dmap_init`).
-- Custom hash and key comparison functions can also be supplied through dmap_init. This is strongly recommended for struct keys.
+- Custom hash and key comparison functions can also be supplied through dmap_init. This is generally required for struct keys due to padding etc.
 
 ---
 
@@ -151,9 +151,6 @@ int main() {
     // Declare a dynamic hashmap (can store any type)
     int *my_dmap = NULL;
 
-    // Optional: Initialize with a custom allocator (requires contiguous memory)
-    // dmap_init(my_dmap, 1024 * 1024, v_alloc_realloc);
-
     // Insert values into the hashmap using integer keys
     int key_1 = 1;
     int key_2 = 2;
@@ -172,7 +169,7 @@ int main() {
     char *str_key = "my_key";
 
     // Optional: Initialize the key-string hashmap w/ custom allocator
-    // dmap_kstr_init(my_kstr_dmap, 1024 * 1024, v_alloc_realloc); 
+    // dmap_kstr_init(my_kstr_dmap, (DmapOptions){.initial_capacity = 1024 * 1024, .data_allocator_fn = v_alloc_realloc}); 
 
     // Insert a value using a string key
     dmap_kstr_insert(my_kstr_dmap, str_key, strlen(str_key), 33); // string keys need length param
