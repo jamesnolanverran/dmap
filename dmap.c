@@ -13,7 +13,7 @@
     #endif
 
     #ifndef dmap_assert
-        #define dmap_assert(expr)                                   \
+        #define dmap_assert(expr)                              \
             do {                                               \
                 if (!(expr)) {                                 \
                     common_assert_failed(__FILE__, __LINE__);  \
@@ -127,16 +127,17 @@ struct DmapTable {
     u64 hash;
     union {
         u64 key;
-        char* kstr;
+        void *ptr;
+        char *kstr;
         char small_kstr[8];
     };
-    u32 data_idx;
-    u32 kstr_len;
+    s32 data_idx;
+    s32 kstr_len;
 };
 
-#define DMAP_EMPTY   UINT32_MAX
-#define DMAP_DELETED (UINT32_MAX - 1)
-#define DMAP_MAX_CAPACITY ((size_t)UINT32_MAX - 2)
+#define DMAP_EMPTY   INT32_MAX
+#define DMAP_DELETED (INT32_MAX - 1)
+#define DMAP_MAX_CAPACITY ((size_t)INT32_MAX - 2)
 
 
 // declare hash functions
@@ -154,6 +155,7 @@ struct DmapTable {
   #endif
 #endif
 static inline u64 rapidhash_internal(const void *key, size_t len, u64 seed, const u64 *secret) RAPIDHASH_NOEXCEPT;
+static inline u64 rapidhash(const void *key, size_t len) RAPIDHASH_NOEXCEPT;
 
 static const u64 RAPIDHASH_SECRET[3] = {
     0x9E3779B97F4A7C15ULL,  
@@ -161,11 +163,14 @@ static const u64 RAPIDHASH_SECRET[3] = {
     0xCA9B0C7EBA1DA115ULL   
 };
 
-unsigned long long dmap_generate_hash(void *key, size_t key_size, unsigned long long seed) {
+unsigned long long dmap_hash(void *key, size_t len){
+    return rapidhash(key, len);
+}
+static unsigned long long dmap_generate_hash(void *key, size_t key_size, unsigned long long seed) {
     return rapidhash_internal(key, key_size, seed, RAPIDHASH_SECRET);
 }
 
-void dmap_freelist_push(DmapHdr *dh, u32 index) {
+static void dmap_freelist_push(DmapHdr *dh, s32 index) {
     if(!dh->free_list){
         dh->free_list = (DmapFreeList*)malloc(sizeof(DmapFreeList));
         if(!dh->free_list){
@@ -173,46 +178,41 @@ void dmap_freelist_push(DmapHdr *dh, u32 index) {
         }
         dh->free_list->cap = 16;
         dh->free_list->len = 0;
-        dh->free_list->data = (u32*)malloc(dh->cap * sizeof(u32));
+        dh->free_list->data = (s32*)malloc(dh->cap * sizeof(s32));
         if(!dh->free_list->data){
             dmap_error_handler("malloc failed at freelist");
         }
     }
     if (dh->free_list->len == dh->free_list->cap) {
         dh->free_list->cap = (dh->free_list->cap * 3) / 2 + 1;  
-        dh->free_list->data = (u32*)realloc(dh->free_list->data, dh->free_list->cap * sizeof(u32));
+        dh->free_list->data = (s32*)realloc(dh->free_list->data, dh->free_list->cap * sizeof(s32));
         if(!dh->free_list->data){
             dmap_error_handler("realloc failed at freelist");
         }
     }
     dh->free_list->data[dh->free_list->len++] = index;
 }
-u32 dmap_freelist_pop(DmapHdr *dh) {
+static u32 dmap_freelist_pop(DmapHdr *dh) {
     if (dh->free_list && dh->free_list->len > 0) {
         return dh->free_list->data[--dh->free_list->len];
     }
     return DMAP_EMPTY;  // no free slots available
 }
-static bool keys_match(DmapTable *table, size_t idx, void *key, size_t key_size, KeyType key_type) {
-    if(key_type == DMAP_U64){
-        return memcmp(key, &table[idx].key, key_size) == 0;
+static bool keys_match(DmapHdr *d, size_t idx, void *key, size_t key_size) {
+    if (d->is_string && d->table[idx].kstr_len != (s32)key_size) {
+        return false;
     }
-    else if(key_type == DMAP_STR){
-        if(table[idx].kstr_len != key_size){
-            return false;
-        }
-        if(table[idx].kstr_len <= 8){
-            return memcmp(table[idx].small_kstr, key, key_size) == 0;
-        }
-        else {
-            return memcmp(table[idx].kstr, key, key_size) == 0;
-        }
+    void *stored = (!d->options.user_managed_keys && key_size <= 8)
+        ? (void*)&d->table[idx].key
+        : d->table[idx].ptr;
+    if (d->options.cmp_fn) {
+        return d->options.cmp_fn(stored, key, key_size);
     }
-    return false;
+    return memcmp(stored, key, key_size) == 0;
 }
+
 // grows the entry array of the hashmap to accommodate more elements
-static void dmap_grow_table(void *dmap, size_t new_hash_cap, size_t old_hash_cap) {
-    DmapHdr *d = dmap__hdr(dmap); // retrieve the hashmap header
+static void dmap_grow_table(DmapHdr *d, size_t new_hash_cap, size_t old_hash_cap) {
     // size_t new_size_in_bytes = new_hash_cap * sizeof(DmapTable);
     DmapTable *new_table = (DmapTable*)calloc(new_hash_cap, sizeof(DmapTable));
     if (!new_table) {
@@ -222,7 +222,7 @@ static void dmap_grow_table(void *dmap, size_t new_hash_cap, size_t old_hash_cap
         new_table[i].data_idx = DMAP_EMPTY;
     }
     // if the hashmap has existing table, rehash them into the new entry array
-    if (dmap_count(dmap)) {
+    if (d->len) {
         for (size_t i = 0; i < old_hash_cap; i++) {
             if(d->table[i].data_idx == DMAP_EMPTY) continue;
             size_t idx = d->table[i].hash & (new_hash_cap - 1);
@@ -241,13 +241,9 @@ static void dmap_grow_table(void *dmap, size_t new_hash_cap, size_t old_hash_cap
     free(d->table);
     d->table = new_table;
 }
-static void *dmap__grow_internal(void *dmap, size_t elem_size) {
-    if (!dmap) {
-        dmap_error_handler("dmap not initialized; unreachable");
-    }
-    DmapHdr *dh = dmap__hdr(dmap);
+static void *dmap__grow_internal(DmapHdr *d, size_t elem_size) {
     DmapHdr *new_hdr = NULL;
-    size_t old_hash_cap = dh->hash_cap;
+    size_t old_hash_cap = d->hash_cap;
     size_t new_hash_cap = old_hash_cap * 2;
     size_t new_cap = (size_t)((float)new_hash_cap * DMAP_LOAD_FACTOR);
     size_t total_size_in_bytes = offsetof(DmapHdr, data) + (new_cap * elem_size);
@@ -258,13 +254,13 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
         dmap_error_handler("Error: Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overide default.");
     }
 
-    new_hdr = (DmapHdr*)dh->alloc(dh, total_size_in_bytes);
+    new_hdr = (DmapHdr*)d->options.data_allocator_fn(d, total_size_in_bytes);
 
     if(!new_hdr) {
         dmap_error_handler("Out of memory 2");
     }
     // grow the table to fit into the newly allocated space
-    dmap_grow_table(new_hdr->data, new_hash_cap, old_hash_cap); 
+    dmap_grow_table(new_hdr, new_hash_cap, old_hash_cap); 
 
     new_hdr->cap = (u32)new_cap;
     new_hdr->hash_cap = (u32)new_hash_cap;
@@ -273,15 +269,12 @@ static void *dmap__grow_internal(void *dmap, size_t elem_size) {
     return new_hdr->data; // return the aligned data pointer
 }
 
-static void *dmap__init_internal(void *dmap, size_t capacity, size_t elem_size, bool is_string, AllocatorFn alloc){
-    if(dmap) {
-        dmap_error_handler("dmap_init: dmap already initialized, argument must be null");
-    }
+static void *dmap__init_internal(size_t elem_size, bool is_string, DmapOptions options){
     DmapHdr *new_hdr = NULL;
 
-    capacity = MAX((size_t)DMAP_INITIAL_CAPACITY, capacity);
+    s32 capacity = options.initial_capacity;
     size_t table_capacity = next_power_of_2(capacity);
-    while ((size_t)((float)table_capacity * DMAP_LOAD_FACTOR) < capacity) {
+    while ((size_t)((float)table_capacity * DMAP_LOAD_FACTOR) < (size_t)capacity) {
         if (table_capacity > SIZE_MAX / 2) {  // Prevent overflow
             dmap_error_handler("Error: exceeded max capacity");
         }
@@ -295,14 +288,17 @@ static void *dmap__init_internal(void *dmap, size_t capacity, size_t elem_size, 
     if(size_in_bytes > DMAP_DEFAULT_MAX_SIZE){
         dmap_error_handler("Error: Max size exceeded. #define DMAP_DEFAULT_MAX_SIZE to overide default.");
     }
-    if(!alloc){
-        alloc = realloc;
+    if(!options.data_allocator_fn){
+        options.data_allocator_fn = realloc;
     }
-    new_hdr = (DmapHdr*)alloc(dmap, size_in_bytes);
+    new_hdr = (DmapHdr*)options.data_allocator_fn(NULL, size_in_bytes);
     if(!new_hdr){
         dmap_error_handler("Out of memory 3");
     }
-    new_hdr->alloc = alloc;
+    if(options.free_key_fn){
+        options.user_managed_keys = true;
+    }
+    new_hdr->options = options;
     new_hdr->len = 0;
     new_hdr->cap = (u32)capacity;
     new_hdr->hash_cap = (u32)table_capacity;
@@ -312,42 +308,64 @@ static void *dmap__init_internal(void *dmap, size_t capacity, size_t elem_size, 
     new_hdr->key_size = 0;
     new_hdr->val_size = (u32)elem_size;
     new_hdr->hash_seed = dmap_generate_seed();
-    new_hdr->key_type = is_string ? DMAP_STR : DMAP_U64;
+    new_hdr->is_string = is_string;
 
-    dmap_grow_table(new_hdr->data, new_hdr->hash_cap, 0);
+    dmap_grow_table(new_hdr, new_hdr->hash_cap, 0);
     dmap_assert(((uintptr_t)&new_hdr->data & (DMAP_ALIGNMENT - 1)) == 0); // ensure alignment
     return new_hdr->data;
 }
-void *dmap__kstr_init(void *dmap, size_t initial_capacity, size_t elem_size, AllocatorFn alloc){
-    return dmap__init_internal(dmap, initial_capacity, elem_size, true, alloc);
+void *dmap__init(size_t elem_size, DmapOptions options){
+    return dmap__init_internal(elem_size, false, options);
 }
-void *dmap__init(void *dmap, size_t initial_capacity, size_t elem_size, AllocatorFn alloc){
-    return dmap__init_internal(dmap, initial_capacity, elem_size, false, alloc);
+void *dmap__kstr_init(size_t elem_size, DmapOptions options){
+    return dmap__init_internal(elem_size, true, options);
+}
+static inline DmapOptions dmap_default_options(void) {
+    return (DmapOptions){
+        .data_allocator_fn = NULL,
+        .free_key_fn = NULL,
+        .initial_capacity = DMAP_INITIAL_CAPACITY,
+        .user_managed_keys = false,
+    };
 }
 // grows the hashmap to a new capacity
-void *dmap__kstr_grow(void *dmap, size_t elem_size) {
-    if (!dmap) {
+void *dmap__grow(DmapHdr *d, size_t elem_size) {
+    if (!d) {
         // when this is the case we just want the defaults
-        return dmap__kstr_init(dmap, 0, elem_size, NULL);
+        return dmap__init(elem_size, dmap_default_options());
     }
-    return dmap__grow_internal(dmap, elem_size);
+    return dmap__grow_internal(d, elem_size);
 }
-void *dmap__grow(void *dmap, size_t elem_size) {
-    if (!dmap) {
+void *dmap__kstr_grow(DmapHdr *d, size_t elem_size) {
+    if (!d) {
         // when this is the case we just want the defaults
-        return dmap__init(dmap, 0, elem_size, NULL);
+        return dmap__kstr_init(elem_size, dmap_default_options());
     }
-    return dmap__grow_internal(dmap, elem_size);
+    return dmap__grow_internal(d, elem_size);
 }
-void dmap__free(void *dmap){
-    DmapHdr *d = dmap__hdr(dmap);
+void dmap__free(DmapHdr *d){
     if(d){
         if(d->table) {
-            if(d->key_type == DMAP_STR){
-                for(u32 i = 0; i < d->hash_cap; i++){
-                    if(d->table[i].kstr != NULL && d->table[i].kstr_len > 8){
-                        free(d->table[i].kstr);
-                        d->table[i].kstr = NULL;
+            if(d->options.user_managed_keys && d->options.free_key_fn){ // user manages keys & provided a free function
+                for(s32 i = 0; i < d->hash_cap; i++){
+                    if(d->table[i].ptr != NULL){
+                        d->options.free_key_fn(d->table[i].ptr);
+                    }
+                }
+            }
+            else if(!d->options.user_managed_keys){
+                if(d->is_string){
+                    for(s32 i = 0; i < d->hash_cap; i++){
+                        if(d->table[i].kstr_len > 8 && d->table[i].kstr != NULL){
+                            free(d->table[i].kstr);
+                        }
+                    }
+                }
+                else {
+                    for(s32 i = 0; i < d->hash_cap; i++){
+                        if(d->key_size > 8 && d->table[i].ptr != NULL){
+                            free(d->table[i].ptr);
+                        }
                     }
                 }
             }
@@ -359,16 +377,14 @@ void dmap__free(void *dmap){
             }
             free(d->free_list);
         }
-        d->alloc(d, 0); 
+        d->options.data_allocator_fn(d, 0); 
     }
 }
-
-static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
-    size_t result = DMAP_INVALID;
-    if(dmap_cap(dmap)!=0) {
-        DmapHdr *d = dmap__hdr(dmap); // retrieve the header of the hashmap for internal structure access
-        u64 hash = dmap_generate_hash(key, key_size, d->hash_seed); // generate a hash value for the given key
-        size_t idx = hash & (d->hash_cap - 1);
+s32 dmap__get_entry_index(DmapHdr *d, void *key, size_t key_size){
+    s32 result = DMAP_INVALID;
+    if(d->cap != 0) {
+        u64 hash = d->options.hash_fn ? d->options.hash_fn(key, key_size) : dmap_generate_hash(key, key_size, d->hash_seed); // generate a hash value for the given key
+        s32 idx = hash & (d->hash_cap - 1);
         // size_t j = d->hash_cap; // counter to ensure the loop doesn't iterate more than the capacity of the hashmap
         while(true) { // loop to search for the key in the hashmap
             // dmap_assert(j-- != 0); // unreachable -- suggests table is full
@@ -376,7 +392,7 @@ static size_t dmap__get_entry_index(void *dmap, void *key, size_t key_size){
                 break;
             }
             if(d->table[idx].data_idx != DMAP_DELETED && d->table[idx].hash == hash) {
-                if(keys_match(d->table, idx, key, key_size, d->key_type)){
+                if(keys_match(d, idx, key, key_size)){
                     result = idx;
                     break;
                 }
@@ -395,19 +411,27 @@ static char *dmap_strdup(char *src, size_t len) {
     dst[len] = '\0';
     return dst;
 }
-
-void dmap__insert_entry(void *dmap, void *key, size_t key_size){ 
-    DmapHdr *d = dmap__hdr(dmap);
-    if(d->key_size == 0){  
-        if(d->key_type == DMAP_STR) 
-            d->key_size = UINT32_MAX; // strings
-        else 
-            d->key_size = (u32)key_size;
+static void *dmap_dup_struct(const void *src, size_t len) {
+    void *dst = malloc(len);
+    if (!dst) {
+        return NULL;
     }
-    else if(d->key_size != key_size && d->key_size != UINT32_MAX){
+    memcpy(dst, src, len);
+    return dst;
+}
+
+
+void dmap__insert_entry(DmapHdr *d, void *key, size_t key_size){ 
+    if(d->key_size == 0){  
+        if(d->is_string) 
+            d->key_size = -1; // strings
+        else 
+            d->key_size = (s32)key_size;
+    }
+    else if(d->key_size != (s32)key_size && d->key_size != -1){
         dmap_error_handler("Error: key is not the correct size");
     }
-    u64 hash = dmap_generate_hash(key, key_size, d->hash_seed);
+    u64 hash =  d->options.hash_fn ? d->options.hash_fn(key, key_size) : dmap_generate_hash(key, key_size, d->hash_seed);
     u32 idx = hash & (d->hash_cap - 1);
     // size_t j = d->hash_cap;
     while(true){
@@ -416,7 +440,7 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size){
             break;
         }
         if(d->table[idx].hash == hash){ 
-            if(keys_match(d->table, idx, key, key_size, d->key_type)){ // modify existing entry
+            if(keys_match(d, idx, key, key_size)){ // modify existing entry
                 break;
             }
         }
@@ -433,13 +457,12 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size){
         DmapTable *entry = &d->table[idx];
         entry->hash = hash;
         entry->data_idx = d->returned_idx;
-        if(d->key_type == DMAP_U64){
-            entry->key = 0;  // zero-out first
-            memcpy(&entry->key, key, key_size);
-        }
-        else if(d->key_type == DMAP_STR) { 
-            entry->kstr_len = (u32)key_size;
-            if(key_size <= 8) {
+        if(d->is_string) { 
+            entry->kstr_len = (s32)key_size;
+            if(d->options.user_managed_keys) { // user managed/allocated keys
+                entry->kstr = key;
+            }
+            else if(key_size <= 8) { // otherwise dmap copies string keys
                 memcpy(entry->small_kstr, key, key_size);
             }
             else {
@@ -449,28 +472,40 @@ void dmap__insert_entry(void *dmap, void *key, size_t key_size){
                 }
             }
         }
+        else {
+            dmap_assert(d->key_size == (s32)key_size);
+            entry->kstr_len = (s32)key_size;
+            if(d->options.user_managed_keys) { // user managed/allocated keys
+                entry->ptr = key;
+            }
+            else if(key_size <= 8){ // copy small keys directly to table
+                entry->key = 0;  // zero-out first
+                memcpy(&entry->key, key, key_size);
+            }
+            else {
+                entry->ptr = dmap_dup_struct(key, key_size); // allocate copies > 8 bytes
+                if(!entry->ptr){
+                    dmap_error_handler("Error: dmap_dup_struct - malloc failed");
+                }
+            }
+        }
     }
     return;
 }
 
-void* dmap__find_data_idx(void *dmap, void *key, size_t key_size){
-    if(!dmap){
-        return NULL;
-    }
-    DmapHdr *d = dmap__hdr(dmap);
-    if(d->key_size != key_size && d->key_size != UINT32_MAX){ 
+void* dmap__getp(DmapHdr *d, void *key, size_t key_size){
+    if(d->key_size != (s32)key_size && d->key_size != -1){  // -1 indicates a string key
         dmap_error_handler("Error: key is not the correct size");
     }
-    size_t idx = dmap__get_entry_index(dmap, key, key_size);
+    size_t idx = dmap__get_entry_index(d, key, key_size);
     if(idx == DMAP_INVALID) { 
         return NULL; // entry is not found
     }
-    return (char*)dmap + d->table[idx].data_idx * d->val_size;
+    return d->data + d->table[idx].data_idx * d->val_size;
 }
-// returns: size_t - The index of the data associated with the key, or DMAP_INVALID (UINT32_MAX) if the key is not found
-size_t dmap__get_idx(void *dmap, void *key, size_t key_size){
-    DmapHdr *d = dmap__hdr(dmap);
-    size_t idx = dmap__get_entry_index(dmap, key, key_size);
+// returns: int - The index of the data associated with the key, or DMAP_INVALID (-1) if the key is not found
+s32 dmap__get_idx(DmapHdr *d, void *key, size_t key_size){
+    s32 idx = dmap__get_entry_index(d, key, key_size);
     if(idx == DMAP_INVALID) {
         return DMAP_INVALID;
     }
@@ -478,31 +513,32 @@ size_t dmap__get_idx(void *dmap, void *key, size_t key_size){
 }
 
     // returns the data index of the deleted entry. Caller may wish to mark data as invalid
-size_t dmap__delete(void *dmap, void *key, size_t key_size){
-    size_t idx = dmap__get_entry_index(dmap, key, key_size);
+s32 dmap__delete(DmapHdr *d, void *key, size_t key_size){
+    s32 idx = dmap__get_entry_index(d, key, key_size);
     if(idx == DMAP_INVALID) {
         return DMAP_INVALID;
     }
-    DmapHdr *d = dmap__hdr(dmap);
-    u32 data_index = d->table[idx].data_idx;
+    s32 data_index = d->table[idx].data_idx;
     dmap_freelist_push(d, data_index);
     d->table[idx].data_idx = DMAP_DELETED;
-    if(d->key_type == DMAP_STR && d->table[idx].kstr_len > 8){
-        free(d->table[idx].kstr);
+
+    if(!d->options.user_managed_keys && key_size > 8){ // dmap copies keys
+        free(d->table[idx].ptr);
+        d->table[idx].ptr = NULL;
+    }
+    else if(d->options.user_managed_keys && d->options.free_key_fn){ // user supplied free_key
+        d->options.free_key_fn(d->table[idx].ptr);
+        d->table[idx].ptr = NULL;
+    }
+    else { // user managed 
         d->table[idx].kstr = NULL;
     }
     d->len -= 1; 
     return data_index;
 }
-size_t dmap_kstr_delete(void *dmap, void *key, size_t key_size){
-    return dmap__delete(dmap, key, key_size);
-}
-size_t dmap_kstr_get_idx(void *dmap, void *key, size_t key_size){
-    return dmap__get_idx(dmap, key, key_size);
-}
 // len of the data array, including invalid table. For iterating
-size_t dmap_range(void *dmap){ 
-    return dmap ? dmap__hdr(dmap)->len + dmap__hdr(dmap)->free_list->len : 0; 
+s32 dmap__range(DmapHdr *d){ 
+    return d ? d->len + d->free_list->len : 0; 
 } 
 
 // MARK: hash function:
